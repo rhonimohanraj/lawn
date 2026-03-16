@@ -2,17 +2,18 @@
   "name": "l2",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.28.2",
+  "type": "module",
   "scripts": {
     "dev": "concurrently -n web,convex -c blue,magenta \"vite dev --port 5296\" \"pnpm exec convex dev\"",
-    "dev:web": "vite dev --port 5296",
-    "build": "vite build",
+    "dev:web": "vp dev --port 5296",
+    "build": "vp build",
     "build:vercel": "pnpm exec convex deploy --cmd 'pnpm run build' --cmd-url-env-var-name VITE_CONVEX_URL",
-    "start": "vite preview --port 5296",
-    "lint": "eslint app src convex --ignore-pattern 'convex/_generated/**'",
+    "start": "vp preview --port 5296",
+    "lint": "vp lint app src convex --ignore-pattern 'convex/_generated/**'",
     "typecheck": "tsc --noEmit",
     "typecheck:convex": "pnpm exec convex typecheck",
-    "generate:og": "tsx scripts/generate-og.tsx"
+    "generate:og": "tsx scripts/generate-og.tsx",
+    "prepare": "vp config"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.991.0",
@@ -58,22 +59,26 @@
     "@types/video.js": "^7.3.58",
     "@vitejs/plugin-react": "^5.1.0",
     "concurrently": "^9.2.1",
-    "eslint": "^9",
     "satori": "^0.19.2",
     "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",
     "typescript-eslint": "^8.41.0",
-    "vite": "^7.1.7",
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vite-plus": "latest",
     "vite-tsconfig-paths": "^5.1.4"
   },
-  "type": "module",
+  "packageManager": "pnpm@10.28.2",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@clerk/shared",
       "esbuild",
       "sharp"
-    ]
+    ],
+    "overrides": {
+      "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+      "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+    }
   }
 }
