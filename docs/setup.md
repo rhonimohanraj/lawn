@@ -2,36 +2,38 @@
 
 ## Development
 
+Install vite+ first. Then...
+
 Install dependencies:
 
 ```bash
-pnpm install
+vp install
 ```
 
 Run app + Convex locally:
 
 ```bash
-pnpm run dev
+vp run dev
 ```
 
 Run only the web app:
 
 ```bash
-pnpm run dev:web
+vp run dev:web
 ```
 
 ## Build / Run
 
 ```bash
-pnpm run build
-pnpm run start
+vp run build
+vp run start
 ```
 
 ## Quality checks
 
 ```bash
-pnpm run typecheck
-pnpm run lint
+vp run typecheck
+vp run lint
 ```
 
 ## Environment variables
