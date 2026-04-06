@@ -88,6 +88,9 @@ export default defineSchema({
     thumbnailUrl: v.optional(v.string()),
     fileSize: v.optional(v.number()),
     contentType: v.optional(v.string()),
+    multipartUploadId: v.optional(v.string()),
+    uploadPartSizeBytes: v.optional(v.number()),
+    uploadTotalParts: v.optional(v.number()),
     uploadError: v.optional(v.string()),
     status: v.union(
       v.literal("uploading"),

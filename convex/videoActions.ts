@@ -1,10 +1,13 @@
 "use node";
 
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
-  PutObjectCommand,
+  UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v } from "convex/values";
@@ -20,8 +23,10 @@ import {
 } from "./mux";
 import { BUCKET_NAME, getS3Client } from "./s3";
 
-const GIBIBYTE = 1024 ** 3;
-const MAX_PRESIGNED_PUT_FILE_SIZE_BYTES = 5 * GIBIBYTE;
+const MEBIBYTE = 1024 ** 2;
+const DEFAULT_MULTIPART_PART_SIZE_BYTES = 16 * MEBIBYTE;
+const MAX_MULTIPART_PARTS = 10_000;
+const MAX_PART_URLS_PER_REQUEST = 32;
 const ALLOWED_UPLOAD_CONTENT_TYPES = new Set([
   "video/mp4",
   "video/quicktime",
@@ -152,16 +157,115 @@ function validateUploadRequestOrThrow(args: { fileSize: number; contentType: str
     throw new Error("Video file size must be greater than zero.");
   }
 
-  if (args.fileSize > MAX_PRESIGNED_PUT_FILE_SIZE_BYTES) {
-    throw new Error("Video file is too large for direct upload.");
-  }
-
   const normalizedContentType = normalizeContentType(args.contentType);
   if (!isAllowedUploadContentType(normalizedContentType)) {
     throw new Error("Unsupported video format. Allowed: mp4, mov, webm, mkv.");
   }
 
   return normalizedContentType;
+}
+
+function buildUploadKey(videoId: Id<"videos">, filename: string) {
+  const ext = getExtensionFromKey(filename);
+  return `videos/${videoId}/${Date.now()}.${ext}`;
+}
+
+function getMultipartPartSizeBytes(fileSize: number) {
+  const minimumSizeForPartCount = Math.ceil(fileSize / MAX_MULTIPART_PARTS);
+  const targetPartSize = Math.max(
+    DEFAULT_MULTIPART_PART_SIZE_BYTES,
+    minimumSizeForPartCount,
+  );
+  return Math.ceil(targetPartSize / MEBIBYTE) * MEBIBYTE;
+}
+
+function validatePartNumberOrThrow(partNumber: number) {
+  if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > MAX_MULTIPART_PARTS) {
+    throw new Error("Invalid multipart upload part number.");
+  }
+  return partNumber;
+}
+
+function validatePartNumbersOrThrow(partNumbers: number[]) {
+  if (partNumbers.length === 0) {
+    throw new Error("At least one multipart upload part number is required.");
+  }
+
+  if (partNumbers.length > MAX_PART_URLS_PER_REQUEST) {
+    throw new Error("Too many multipart upload parts requested at once.");
+  }
+
+  const seenPartNumbers = new Set<number>();
+  return partNumbers.map((partNumber) => {
+    const normalizedPartNumber = validatePartNumberOrThrow(partNumber);
+    if (seenPartNumbers.has(normalizedPartNumber)) {
+      throw new Error("Duplicate multipart upload part number.");
+    }
+    seenPartNumbers.add(normalizedPartNumber);
+    return normalizedPartNumber;
+  });
+}
+
+function normalizeCompletedPartsOrThrow(
+  parts: Array<{ partNumber: number; etag: string }>,
+  expectedPartCount?: number,
+) {
+  if (parts.length === 0) {
+    throw new Error("At least one completed multipart upload part is required.");
+  }
+
+  if (expectedPartCount !== undefined && parts.length !== expectedPartCount) {
+    throw new Error("Multipart upload completed with the wrong number of parts.");
+  }
+
+  const seenPartNumbers = new Set<number>();
+  return [...parts]
+    .map((part) => {
+      const partNumber = validatePartNumberOrThrow(part.partNumber);
+      if (expectedPartCount !== undefined && partNumber > expectedPartCount) {
+        throw new Error("Multipart upload completed with an unexpected part number.");
+      }
+      const etag = part.etag.trim();
+      if (!etag) {
+        throw new Error(`Missing multipart upload ETag for part ${partNumber}.`);
+      }
+      if (seenPartNumbers.has(partNumber)) {
+        throw new Error("Duplicate completed multipart upload part.");
+      }
+      seenPartNumbers.add(partNumber);
+      return { partNumber, etag };
+    })
+    .sort((a, b) => a.partNumber - b.partNumber);
+}
+
+async function requireMatchingUploadKey(
+  ctx: ActionCtx,
+  params: {
+    videoId: Id<"videos">;
+    key: string;
+    multipartUploadId?: string;
+  },
+) {
+  const video = await ctx.runQuery(api.videos.getVideoForPlayback, {
+    videoId: params.videoId,
+  });
+
+  if (!video?.s3Key) {
+    throw new Error("Upload session not found for this video.");
+  }
+
+  if (video.s3Key !== params.key) {
+    throw new Error("Upload session no longer matches this video.");
+  }
+
+  if (
+    params.multipartUploadId !== undefined &&
+    video.multipartUploadId !== params.multipartUploadId
+  ) {
+    throw new Error("Multipart upload session no longer matches this video.");
+  }
+
+  return video;
 }
 
 function shouldDeleteUploadedObjectOnFailure(error: unknown): boolean {
@@ -173,6 +277,8 @@ function shouldDeleteUploadedObjectOnFailure(error: unknown): boolean {
     error.message.includes("Unsupported video format") ||
     error.message.includes("Video file is too large") ||
     error.message.includes("Uploaded video file not found") ||
+    error.message.includes("Uploaded video file size did not match") ||
+    error.message.includes("Multipart upload completed with") ||
     error.message.includes("Storage limit reached")
   );
 }
@@ -233,7 +339,7 @@ async function ensurePublicPlaybackId(
   return resolvedPlaybackId;
 }
 
-export const getUploadUrl = action({
+export const createMultipartUpload = action({
   args: {
     videoId: v.id("videos"),
     filename: v.string(),
@@ -241,8 +347,10 @@ export const getUploadUrl = action({
     contentType: v.string(),
   },
   returns: v.object({
-    url: v.string(),
-    uploadId: v.string(),
+    key: v.string(),
+    multipartUploadId: v.string(),
+    partSizeBytes: v.number(),
+    totalParts: v.number(),
   }),
   handler: async (ctx, args) => {
     await requireVideoMemberAccess(ctx, args.videoId);
@@ -251,24 +359,173 @@ export const getUploadUrl = action({
       contentType: args.contentType,
     });
 
+    const key = buildUploadKey(args.videoId, args.filename);
+    const partSizeBytes = getMultipartPartSizeBytes(args.fileSize);
+    const totalParts = Math.max(1, Math.ceil(args.fileSize / partSizeBytes));
     const s3 = getS3Client();
-    const ext = getExtensionFromKey(args.filename);
-    const key = `videos/${args.videoId}/${Date.now()}.${ext}`;
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-      ContentType: normalizedContentType,
-    });
-    const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+    const result = await s3.send(
+      new CreateMultipartUploadCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        ContentType: normalizedContentType,
+      }),
+    );
+
+    if (!result.UploadId) {
+      throw new Error("Could not create multipart upload session.");
+    }
 
     await ctx.runMutation(internal.videos.setUploadInfo, {
       videoId: args.videoId,
       s3Key: key,
       fileSize: args.fileSize,
       contentType: normalizedContentType,
+      multipartUploadId: result.UploadId,
+      uploadPartSizeBytes: partSizeBytes,
+      uploadTotalParts: totalParts,
     });
 
-    return { url, uploadId: key };
+    return {
+      key,
+      multipartUploadId: result.UploadId,
+      partSizeBytes,
+      totalParts,
+    };
+  },
+});
+
+export const getMultipartUploadPartUrls = action({
+  args: {
+    videoId: v.id("videos"),
+    key: v.string(),
+    multipartUploadId: v.string(),
+    partNumbers: v.array(v.number()),
+  },
+  returns: v.object({
+    parts: v.array(
+      v.object({
+        partNumber: v.number(),
+        url: v.string(),
+      }),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    await requireVideoMemberAccess(ctx, args.videoId);
+    const video = await requireMatchingUploadKey(ctx, {
+      videoId: args.videoId,
+      key: args.key,
+      multipartUploadId: args.multipartUploadId,
+    });
+    const normalizedPartNumbers = validatePartNumbersOrThrow(args.partNumbers);
+    const expectedTotalParts = video.uploadTotalParts;
+    if (
+      expectedTotalParts !== undefined &&
+      normalizedPartNumbers.some((partNumber) => partNumber > expectedTotalParts)
+    ) {
+      throw new Error("Requested multipart upload part is outside this upload session.");
+    }
+
+    const s3 = getS3Client();
+    const parts = await Promise.all(
+      normalizedPartNumbers.map(async (partNumber) => ({
+        partNumber,
+        url: await getSignedUrl(
+          s3,
+          new UploadPartCommand({
+            Bucket: BUCKET_NAME,
+            Key: args.key,
+            UploadId: args.multipartUploadId,
+            PartNumber: partNumber,
+          }),
+          { expiresIn: 3600 },
+        ),
+      })),
+    );
+
+    return { parts };
+  },
+});
+
+export const completeMultipartUpload = action({
+  args: {
+    videoId: v.id("videos"),
+    key: v.string(),
+    multipartUploadId: v.string(),
+    parts: v.array(
+      v.object({
+        partNumber: v.number(),
+        etag: v.string(),
+      }),
+    ),
+  },
+  returns: v.object({
+    success: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    await requireVideoMemberAccess(ctx, args.videoId);
+    const video = await requireMatchingUploadKey(ctx, {
+      videoId: args.videoId,
+      key: args.key,
+      multipartUploadId: args.multipartUploadId,
+    });
+
+    const completedParts = normalizeCompletedPartsOrThrow(
+      args.parts,
+      video.uploadTotalParts,
+    );
+    const s3 = getS3Client();
+    await s3.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: BUCKET_NAME,
+        Key: args.key,
+        UploadId: args.multipartUploadId,
+        MultipartUpload: {
+          Parts: completedParts.map((part) => ({
+            PartNumber: part.partNumber,
+            ETag: part.etag,
+          })),
+        },
+      }),
+    );
+
+    return { success: true };
+  },
+});
+
+export const abortMultipartUpload = action({
+  args: {
+    videoId: v.id("videos"),
+    key: v.string(),
+    multipartUploadId: v.string(),
+  },
+  returns: v.object({
+    success: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    await requireVideoMemberAccess(ctx, args.videoId);
+    await requireMatchingUploadKey(ctx, {
+      videoId: args.videoId,
+      key: args.key,
+      multipartUploadId: args.multipartUploadId,
+    });
+
+    const s3 = getS3Client();
+    try {
+      await s3.send(
+        new AbortMultipartUploadCommand({
+          Bucket: BUCKET_NAME,
+          Key: args.key,
+          UploadId: args.multipartUploadId,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.name === "NoSuchUpload") {
+        return { success: true };
+      }
+      throw error;
+    }
+
+    return { success: true };
   },
 });
 
@@ -307,8 +564,12 @@ export const markUploadComplete = action({
         throw new Error("Uploaded video file not found or empty.");
       }
       const contentLength = contentLengthRaw;
-      if (contentLength > MAX_PRESIGNED_PUT_FILE_SIZE_BYTES) {
-        throw new Error("Video file is too large for direct upload.");
+      if (
+        typeof video.fileSize === "number" &&
+        Number.isFinite(video.fileSize) &&
+        contentLength !== video.fileSize
+      ) {
+        throw new Error("Uploaded video file size did not match the requested upload.");
       }
 
       const normalizedContentType = normalizeContentType(

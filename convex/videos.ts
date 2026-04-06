@@ -327,6 +327,9 @@ export const setUploadInfo = internalMutation({
     s3Key: v.string(),
     fileSize: v.number(),
     contentType: v.string(),
+    multipartUploadId: v.string(),
+    uploadPartSizeBytes: v.number(),
+    uploadTotalParts: v.number(),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.videoId, {
@@ -340,6 +343,9 @@ export const setUploadInfo = internalMutation({
       uploadError: undefined,
       fileSize: args.fileSize,
       contentType: args.contentType,
+      multipartUploadId: args.multipartUploadId,
+      uploadPartSizeBytes: args.uploadPartSizeBytes,
+      uploadTotalParts: args.uploadTotalParts,
       status: "uploading",
     });
   },
@@ -376,6 +382,9 @@ export const reconcileUploadedObjectMetadata = internalMutation({
     await ctx.db.patch(args.videoId, {
       fileSize: actualSize,
       contentType: args.contentType,
+      multipartUploadId: undefined,
+      uploadPartSizeBytes: undefined,
+      uploadTotalParts: undefined,
     });
   },
 });
@@ -423,6 +432,9 @@ export const markAsFailed = internalMutation({
     await ctx.db.patch(args.videoId, {
       muxAssetStatus: "errored",
       uploadError: args.uploadError,
+      multipartUploadId: undefined,
+      uploadPartSizeBytes: undefined,
+      uploadTotalParts: undefined,
       status: "failed",
     });
   },
