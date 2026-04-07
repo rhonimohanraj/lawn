@@ -48,7 +48,11 @@ export default function PricingPage() {
                 </li>
                 <li className="flex items-center gap-3">
                   <span className="text-[#2d5a2d] text-2xl">&#10003;</span>{" "}
-                  100GB Storage
+                  100GB storage
+                </li>
+                <li className="flex items-center gap-3">
+                  <span className="text-[#2d5a2d] text-2xl">&#10003;</span>{" "}
+                  10GB max file size
                 </li>
               </ul>
 
@@ -91,8 +95,12 @@ export default function PricingPage() {
                   Unlimited clients
                 </li>
                 <li className="flex items-center gap-3">
-                  <span className="text-[#7cb87c] text-2xl">&#10003;</span> 1TB
-                  Storage
+                  <span className="text-[#7cb87c] text-2xl">&#10003;</span>{" "}
+                  1TB storage
+                </li>
+                <li className="flex items-center gap-3">
+                  <span className="text-[#7cb87c] text-2xl">&#10003;</span>{" "}
+                  50GB max file size
                 </li>
               </ul>
 

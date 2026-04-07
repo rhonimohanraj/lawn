@@ -25,6 +25,7 @@ const BILLING_PLANS: Record<
     label: string;
     monthlyPriceUsd: number;
     storageLimitBytes: number;
+    maxFileSizeBytes: number;
     seats: string;
   }
 > = {
@@ -32,12 +33,14 @@ const BILLING_PLANS: Record<
     label: "Basic",
     monthlyPriceUsd: 5,
     storageLimitBytes: 100 * GIBIBYTE,
+    maxFileSizeBytes: 10 * GIBIBYTE,
     seats: "Unlimited",
   },
   pro: {
     label: "Pro",
     monthlyPriceUsd: 25,
     storageLimitBytes: TEBIBYTE,
+    maxFileSizeBytes: 50 * GIBIBYTE,
     seats: "Unlimited",
   },
 };
@@ -52,8 +55,13 @@ function normalizeTeamPlan(plan: string): BillingPlan {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes >= TEBIBYTE) return `${(bytes / TEBIBYTE).toFixed(1)} TB`;
-  return `${(bytes / GIBIBYTE).toFixed(1)} GB`;
+  if (bytes >= TEBIBYTE) {
+    const value = bytes / TEBIBYTE;
+    return `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)} TB`;
+  }
+
+  const value = bytes / GIBIBYTE;
+  return `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)} GB`;
 }
 
 function formatUtcDateFromUnixSeconds(unixSeconds: number): string {
@@ -324,7 +332,7 @@ export default function TeamSettingsPage() {
           </div>
 
           {/* ── Stats strip ── */}
-          <div className="border-t-2 border-b-2 border-[#1a1a1a] py-5 mb-8 grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 lg:gap-12">
+          <div className="border-t-2 border-b-2 border-[#1a1a1a] py-5 mb-8 grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-6 lg:gap-12">
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-[#888] mb-1">
                 Plan
@@ -371,6 +379,14 @@ export default function TeamSettingsPage() {
               </p>
               <p className="text-xl font-black text-[#1a1a1a]">
                 {planConfig.seats}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#888] mb-1">
+                Max file
+              </p>
+              <p className="text-xl font-black text-[#1a1a1a]">
+                {formatBytes(planConfig.maxFileSizeBytes)}
               </p>
             </div>
           </div>
@@ -425,6 +441,7 @@ export default function TeamSettingsPage() {
                       >
                         <p>{config.seats} seats</p>
                         <p>{formatBytes(config.storageLimitBytes)} storage</p>
+                        <p>{formatBytes(config.maxFileSizeBytes)} max file size</p>
                       </div>
                       {isOwner && !hasActiveSubscription && (
                         <Button

@@ -93,7 +93,7 @@ export function DropZone({ onFilesSelected, disabled, className }: DropZoneProps
             {isDragActive ? "Drop to upload" : "Drop videos or click to upload"}
           </p>
           <p className="text-sm text-[#888] mt-1">
-            MP4, MOV, WebM supported
+            MP4, MOV, WebM, MKV supported
           </p>
         </div>
       </div>

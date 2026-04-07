@@ -259,7 +259,8 @@ export default function Homepage() {
                 <li className="flex items-center gap-3"><span className="text-[#2d5a2d] text-2xl">✓</span> Unlimited seats</li>
                 <li className="flex items-center gap-3"><span className="text-[#2d5a2d] text-2xl">✓</span> Unlimited projects</li>
                 <li className="flex items-center gap-3"><span className="text-[#2d5a2d] text-2xl">✓</span> Unlimited clients</li>
-                <li className="flex items-center gap-3"><span className="text-[#2d5a2d] text-2xl">✓</span> 100GB Storage</li>
+                <li className="flex items-center gap-3"><span className="text-[#2d5a2d] text-2xl">✓</span> 100GB storage</li>
+                <li className="flex items-center gap-3"><span className="text-[#2d5a2d] text-2xl">✓</span> 10GB max file size</li>
               </ul>
               
               <Link to="/sign-up" className="bg-[#1a1a1a] text-[#f0f0e8] text-center py-4 border-2 border-[#1a1a1a] font-black uppercase hover:bg-[#2d5a2d] transition-colors">Get Basic</Link>
@@ -278,7 +279,8 @@ export default function Homepage() {
                 <li className="flex items-center gap-3"><span className="text-[#7cb87c] text-2xl">✓</span> Unlimited seats</li>
                 <li className="flex items-center gap-3"><span className="text-[#7cb87c] text-2xl">✓</span> Unlimited projects</li>
                 <li className="flex items-center gap-3"><span className="text-[#7cb87c] text-2xl">✓</span> Unlimited clients</li>
-                <li className="flex items-center gap-3"><span className="text-[#7cb87c] text-2xl">✓</span> 1TB Storage (Whoa)</li>
+                <li className="flex items-center gap-3"><span className="text-[#7cb87c] text-2xl">✓</span> 1TB storage</li>
+                <li className="flex items-center gap-3"><span className="text-[#7cb87c] text-2xl">✓</span> 50GB max file size</li>
               </ul>
               
               <Link to="/sign-up" className="bg-[#f0f0e8] text-[#1a1a1a] text-center py-4 border-2 border-[#f0f0e8] font-black uppercase hover:bg-[#d8d8d0] transition-colors">Get Pro</Link>
@@ -326,7 +328,7 @@ export default function Homepage() {
                 price: "5.00",
                 priceCurrency: "USD",
                 description:
-                  "Unlimited seats, unlimited projects, unlimited clients, 100GB storage",
+                  "Unlimited seats, unlimited projects, unlimited clients, 100GB storage, 10GB max file size",
               },
               {
                 "@type": "Offer",
@@ -334,7 +336,7 @@ export default function Homepage() {
                 price: "25.00",
                 priceCurrency: "USD",
                 description:
-                  "Unlimited seats, unlimited projects, unlimited clients, 1TB storage",
+                  "Unlimited seats, unlimited projects, unlimited clients, 1TB storage, 50GB max file size",
               },
             ],
             creator: {
