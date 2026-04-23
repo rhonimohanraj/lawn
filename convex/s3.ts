@@ -1,17 +1,37 @@
 import { S3Client } from "@aws-sdk/client-s3";
 
-export const BUCKET_NAME = process.env.RAILWAY_BUCKET_NAME || "videos";
+function readEnv(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return undefined;
+}
+
+export const BUCKET_NAME =
+  readEnv("BACKBLAZE_BUCKET_NAME", "RAILWAY_BUCKET_NAME") ?? "videos";
 
 function getBasePublicUrl(): string {
-  const baseUrl = process.env.RAILWAY_PUBLIC_URL || process.env.RAILWAY_ENDPOINT;
+  const baseUrl = readEnv(
+    "BACKBLAZE_PUBLIC_URL",
+    "BACKBLAZE_ENDPOINT",
+    "RAILWAY_PUBLIC_URL",
+    "RAILWAY_ENDPOINT",
+  );
   if (!baseUrl) {
-    throw new Error("Missing RAILWAY_PUBLIC_URL or RAILWAY_ENDPOINT for bucket URLs");
+    throw new Error(
+      "Missing BACKBLAZE_PUBLIC_URL or BACKBLAZE_ENDPOINT for bucket URLs",
+    );
   }
   return baseUrl;
 }
 
 export function buildPublicUrl(key: string): string {
-  const includeBucket = process.env.RAILWAY_PUBLIC_URL_INCLUDE_BUCKET !== "false";
+  const includeBucketFlag = readEnv(
+    "BACKBLAZE_PUBLIC_URL_INCLUDE_BUCKET",
+    "RAILWAY_PUBLIC_URL_INCLUDE_BUCKET",
+  );
+  const includeBucket = includeBucketFlag !== "false";
   const url = new URL(getBasePublicUrl());
   const basePath = url.pathname.endsWith("/")
     ? url.pathname.slice(0, -1)
@@ -22,16 +42,23 @@ export function buildPublicUrl(key: string): string {
 }
 
 export function getS3Client(): S3Client {
-  const accessKeyId = process.env.RAILWAY_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.RAILWAY_SECRET_ACCESS_KEY;
+  const accessKeyId = readEnv(
+    "BACKBLAZE_ACCESS_KEY_ID",
+    "RAILWAY_ACCESS_KEY_ID",
+  );
+  const secretAccessKey = readEnv(
+    "BACKBLAZE_SECRET_ACCESS_KEY",
+    "RAILWAY_SECRET_ACCESS_KEY",
+  );
 
   if (!accessKeyId || !secretAccessKey) {
-    throw new Error("Missing Railway S3 credentials");
+    throw new Error("Missing BACKBLAZE S3 credentials");
   }
 
   return new S3Client({
-    region: process.env.RAILWAY_REGION || "us-east-1",
-    endpoint: process.env.RAILWAY_ENDPOINT,
+    region:
+      readEnv("BACKBLAZE_REGION", "RAILWAY_REGION") ?? "us-west-004",
+    endpoint: readEnv("BACKBLAZE_ENDPOINT", "RAILWAY_ENDPOINT"),
     credentials: {
       accessKeyId,
       secretAccessKey,

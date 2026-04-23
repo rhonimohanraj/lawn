@@ -5,6 +5,7 @@ import { useUser } from "@clerk/tanstack-react-start";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { triggerDownload } from "@/lib/download";
@@ -32,6 +33,20 @@ export default function WatchPage() {
   const [commentText, setCommentText] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [guestName, setGuestName] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("lawn:guestName");
+    if (stored) setGuestName(stored);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (guestName.trim()) {
+      window.localStorage.setItem("lawn:guestName", guestName.trim());
+    }
+  }, [guestName]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [mobileCommentsOpen, setMobileCommentsOpen] = useState(false);
@@ -96,6 +111,12 @@ export default function WatchPage() {
     event.preventDefault();
     if (!commentText.trim() || isSubmittingComment) return;
 
+    const trimmedGuestName = guestName.trim();
+    if (!user && !trimmedGuestName) {
+      setCommentError("Enter your name so your comment is attributed.");
+      return;
+    }
+
     setIsSubmittingComment(true);
     setCommentError(null);
     try {
@@ -103,6 +124,7 @@ export default function WatchPage() {
         publicId,
         text: commentText.trim(),
         timestampSeconds: currentTime,
+        guestName: user ? undefined : trimmedGuestName,
       });
       setCommentText("");
     } catch {
@@ -310,12 +332,21 @@ export default function WatchPage() {
           </div>
           
           <div className="flex-shrink-0 border-t-2 border-[#1a1a1a] bg-[#f0f0e8] p-4">
-            {isUserLoaded && user ? (
+            {isUserLoaded ? (
               <form onSubmit={handleSubmitComment} className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-[#666]">
                   <Clock className="h-3.5 w-3.5" />
                   Comment at {formatTimestamp(currentTime)}
                 </div>
+                {!user ? (
+                  <Input
+                    value={guestName}
+                    onChange={(event) => setGuestName(event.target.value)}
+                    placeholder="Your name"
+                    maxLength={80}
+                    required
+                  />
+                ) : null}
                 <Textarea
                   value={commentText}
                   onChange={(event) => setCommentText(event.target.value)}
@@ -323,22 +354,21 @@ export default function WatchPage() {
                   className="min-h-[90px] text-sm"
                 />
                 {commentError ? <p className="text-xs text-[#dc2626]">{commentError}</p> : null}
-                <Button type="submit" size="sm" disabled={!commentText.trim() || isSubmittingComment} className="w-full">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={
+                    !commentText.trim() ||
+                    isSubmittingComment ||
+                    (!user && !guestName.trim())
+                  }
+                  className="w-full"
+                >
                   <MessageSquare className="mr-1.5 h-4 w-4" />
                   {isSubmittingComment ? "Posting..." : "Post comment"}
                 </Button>
               </form>
-            ) : (
-              <a
-                href={`/sign-in?redirect_url=${encodeURIComponent(`/watch/${publicId}`)}`}
-                className="block"
-              >
-                <Button className="w-full">
-                  <MessageSquare className="mr-1.5 h-4 w-4" />
-                  Sign in to comment
-                </Button>
-              </a>
-            )}
+            ) : null}
           </div>
         </aside>
       </div>
@@ -419,12 +449,21 @@ export default function WatchPage() {
           </div>
           
           <div className="flex-shrink-0 border-t-2 border-[#1a1a1a] bg-[#f0f0e8] p-4 pb-safe">
-            {isUserLoaded && user ? (
+            {isUserLoaded ? (
               <form onSubmit={handleSubmitComment} className="space-y-2">
                 <div className="flex items-center gap-2 text-xs text-[#666]">
                   <Clock className="h-3.5 w-3.5" />
                   Comment at {formatTimestamp(currentTime)}
                 </div>
+                {!user ? (
+                  <Input
+                    value={guestName}
+                    onChange={(event) => setGuestName(event.target.value)}
+                    placeholder="Your name"
+                    maxLength={80}
+                    required
+                  />
+                ) : null}
                 <Textarea
                   value={commentText}
                   onChange={(event) => setCommentText(event.target.value)}
@@ -432,22 +471,21 @@ export default function WatchPage() {
                   className="min-h-[90px] text-sm"
                 />
                 {commentError ? <p className="text-xs text-[#dc2626]">{commentError}</p> : null}
-                <Button type="submit" size="sm" disabled={!commentText.trim() || isSubmittingComment} className="w-full">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={
+                    !commentText.trim() ||
+                    isSubmittingComment ||
+                    (!user && !guestName.trim())
+                  }
+                  className="w-full"
+                >
                   <MessageSquare className="mr-1.5 h-4 w-4" />
                   {isSubmittingComment ? "Posting..." : "Post comment"}
                 </Button>
               </form>
-            ) : (
-              <a
-                href={`/sign-in?redirect_url=${encodeURIComponent(`/watch/${publicId}`)}`}
-                className="block"
-              >
-                <Button className="w-full">
-                  <MessageSquare className="mr-1.5 h-4 w-4" />
-                  Sign in to comment
-                </Button>
-              </a>
-            )}
+            ) : null}
           </div>
         </div>
       )}

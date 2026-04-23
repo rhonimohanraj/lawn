@@ -105,15 +105,28 @@ export const create = mutation({
   },
 });
 
+function sanitizeGuestName(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim().replace(/\s+/g, " ").slice(0, 80);
+  return trimmed.length >= 1 ? trimmed : null;
+}
+
 export const createForPublic = mutation({
   args: {
     publicId: v.string(),
     text: v.string(),
     timestampSeconds: v.number(),
     parentId: v.optional(v.id("comments")),
+    guestName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    const guestName = sanitizeGuestName(args.guestName);
+
+    if (!identity && !guestName) {
+      throw new Error("Name is required to comment as a guest");
+    }
+
     const video = await getPublicVideoByPublicId(ctx, args.publicId);
 
     if (!video) {
@@ -129,9 +142,9 @@ export const createForPublic = mutation({
 
     return await ctx.db.insert("comments", {
       videoId: video._id,
-      userClerkId: user.subject,
-      userName: identityName(user),
-      userAvatarUrl: identityAvatarUrl(user),
+      userClerkId: identity?.subject,
+      userName: identity ? identityName(identity) : (guestName as string),
+      userAvatarUrl: identity ? identityAvatarUrl(identity) : undefined,
       text: args.text,
       timestampSeconds: args.timestampSeconds,
       parentId: args.parentId,
@@ -146,9 +159,16 @@ export const createForShareGrant = mutation({
     text: v.string(),
     timestampSeconds: v.number(),
     parentId: v.optional(v.id("comments")),
+    guestName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    const guestName = sanitizeGuestName(args.guestName);
+
+    if (!identity && !guestName) {
+      throw new Error("Name is required to comment as a guest");
+    }
+
     const resolved = await resolveActiveShareGrant(ctx, args.grantToken);
 
     if (!resolved) {
@@ -169,9 +189,9 @@ export const createForShareGrant = mutation({
 
     return await ctx.db.insert("comments", {
       videoId: video._id,
-      userClerkId: user.subject,
-      userName: identityName(user),
-      userAvatarUrl: identityAvatarUrl(user),
+      userClerkId: identity?.subject,
+      userName: identity ? identityName(identity) : (guestName as string),
+      userAvatarUrl: identity ? identityAvatarUrl(identity) : undefined,
       text: args.text,
       timestampSeconds: args.timestampSeconds,
       parentId: args.parentId,

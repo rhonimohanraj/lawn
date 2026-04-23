@@ -40,6 +40,20 @@ export default function SharePage() {
   const [commentText, setCommentText] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [guestName, setGuestName] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("lawn:guestName");
+    if (stored) setGuestName(stored);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (guestName.trim()) {
+      window.localStorage.setItem("lawn:guestName", guestName.trim());
+    }
+  }, [guestName]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const playerRef = useRef<VideoPlayerHandle | null>(null);
@@ -150,6 +164,12 @@ export default function SharePage() {
     event.preventDefault();
     if (!grantToken || !commentText.trim() || isSubmittingComment) return;
 
+    const trimmedGuestName = guestName.trim();
+    if (!user && !trimmedGuestName) {
+      setCommentError("Enter your name so your comment is attributed.");
+      return;
+    }
+
     setIsSubmittingComment(true);
     setCommentError(null);
     try {
@@ -157,6 +177,7 @@ export default function SharePage() {
         grantToken,
         text: commentText.trim(),
         timestampSeconds: currentTime,
+        guestName: user ? undefined : trimmedGuestName,
       });
       setCommentText("");
     } catch {
@@ -367,12 +388,21 @@ export default function SharePage() {
             <span className="text-xs text-[#888] font-mono">{formatTimestamp(currentTime)}</span>
           </div>
 
-          {isUserLoaded && user ? (
+          {isUserLoaded ? (
             <form onSubmit={handleSubmitComment} className="space-y-2">
               <div className="flex items-center gap-2 text-xs text-[#666]">
                 <Clock className="h-3.5 w-3.5" />
                 Comment at {formatTimestamp(currentTime)}
               </div>
+              {!user ? (
+                <Input
+                  value={guestName}
+                  onChange={(event) => setGuestName(event.target.value)}
+                  placeholder="Your name"
+                  maxLength={80}
+                  required
+                />
+              ) : null}
               <Textarea
                 value={commentText}
                 onChange={(event) => setCommentText(event.target.value)}
@@ -380,22 +410,19 @@ export default function SharePage() {
                 className="min-h-[90px]"
               />
               {commentError ? <p className="text-xs text-[#dc2626]">{commentError}</p> : null}
-              <Button type="submit" disabled={!commentText.trim() || isSubmittingComment}>
+              <Button
+                type="submit"
+                disabled={
+                  !commentText.trim() ||
+                  isSubmittingComment ||
+                  (!user && !guestName.trim())
+                }
+              >
                 <MessageSquare className="mr-1.5 h-4 w-4" />
                 {isSubmittingComment ? "Posting..." : "Post comment"}
               </Button>
             </form>
-          ) : (
-            <a
-              href={`/sign-in?redirect_url=${encodeURIComponent(`/share/${token}`)}`}
-              className="inline-flex"
-            >
-              <Button>
-                <MessageSquare className="mr-1.5 h-4 w-4" />
-                Sign in to comment
-              </Button>
-            </a>
-          )}
+          ) : null}
 
           {comments === undefined ? (
             <p className="text-sm text-[#888]">Loading comments...</p>
