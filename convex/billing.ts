@@ -9,6 +9,7 @@ import {
   getTeamStorageUsedBytes,
   getTeamSubscriptionState,
   hasActiveTeamSubscriptionStatus,
+  isSelfHosted,
   normalizeStoredTeamPlan,
   resolvePlanFromStripePriceId,
   TEAM_PLAN_MONTHLY_PRICE_USD,
@@ -303,6 +304,24 @@ export const getTeamBilling = query({
     const subscriptionState = await getTeamSubscriptionState(ctx, args.teamId);
     const storageUsedBytes = await getTeamStorageUsedBytes(ctx, args.teamId);
     const subscription = subscriptionState.subscription;
+
+    if (isSelfHosted()) {
+      return {
+        plan: "pro" as const,
+        monthlyPriceUsd: 0,
+        // 10 PiB - matches SELF_HOSTED_STORAGE_LIMIT_BYTES
+        storageLimitBytes: 10 * 1024 * 1024 ** 3 * 1024,
+        storageUsedBytes,
+        hasActiveSubscription: true,
+        subscriptionStatus: "self_hosted",
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        stripePriceId: null,
+        currentPeriodEnd: null,
+        role: membership.role,
+        canManageBilling: false,
+      };
+    }
 
     return {
       plan: subscriptionState.plan,

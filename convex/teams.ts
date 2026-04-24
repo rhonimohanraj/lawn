@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { getUser, identityAvatarUrl, identityEmail, identityName, requireUser, requireTeamAccess } from "./auth";
-import { getTeamSubscriptionState } from "./billingHelpers";
+import { getTeamSubscriptionState, isSelfHosted } from "./billingHelpers";
 
 function normalizedEmail(value: string) {
   return value.trim().toLowerCase();
@@ -99,6 +99,8 @@ export const listWithProjects = query({
     const user = await getUser(ctx);
     if (!user) return [];
 
+    const selfHosted = isSelfHosted();
+
     const memberships = await ctx.db
       .query("teamMembers")
       .withIndex("by_user", (q) => q.eq("userClerkId", user.subject))
@@ -108,13 +110,12 @@ export const listWithProjects = query({
       memberships.map(async (membership) => {
         const team = await ctx.db.get(membership.teamId);
         if (!team) return null;
-        
+
         const projects = await ctx.db
           .query("projects")
           .withIndex("by_team", (q) => q.eq("teamId", team._id))
           .collect();
 
-        // Get video counts for each project
         const projectsWithCounts = await Promise.all(
           projects.map(async (project) => {
             const videos = await ctx.db
@@ -127,8 +128,13 @@ export const listWithProjects = query({
             };
           })
         );
-          
-        return { ...team, role: membership.role, projects: projectsWithCounts };
+
+        return {
+          ...team,
+          role: membership.role,
+          projects: projectsWithCounts,
+          selfHosted,
+        };
       })
     );
 

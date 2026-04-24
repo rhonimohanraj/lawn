@@ -128,10 +128,15 @@ export default function TeamSettingsPage() {
   const planConfig = BILLING_PLANS[plan];
   const hasActiveSubscription = billing?.hasActiveSubscription ?? false;
   const subscriptionStatus = billing?.subscriptionStatus ?? "not_subscribed";
+  const isSelfHosted = subscriptionStatus === "self_hosted";
   const isTrialing = subscriptionStatus === "trialing";
   const hasPortalAccess = isOwner && Boolean(billing?.stripeCustomerId);
-  const currentPlanLabel = hasActiveSubscription ? planConfig.label : "Unpaid";
-  const canDeleteTeam = isOwner && !hasActiveSubscription;
+  const currentPlanLabel = isSelfHosted
+    ? "Self-hosted"
+    : hasActiveSubscription
+    ? planConfig.label
+    : "Unpaid";
+  const canDeleteTeam = isOwner && (isSelfHosted || !hasActiveSubscription);
 
   const storageUsed = billing?.storageUsedBytes ?? 0;
   const storageLimit = planConfig.storageLimitBytes;
@@ -333,7 +338,9 @@ export default function TeamSettingsPage() {
                 <span className="text-xl font-black text-[#1a1a1a]">
                   {currentPlanLabel}
                 </span>
-                {hasActiveSubscription ? (
+                {isSelfHosted ? (
+                  <Badge variant="success">Self-hosted</Badge>
+                ) : hasActiveSubscription ? (
                   <Badge variant={isTrialing ? "warning" : "success"}>
                     {isTrialing ? "Trialing" : "Active"}
                   </Badge>
@@ -376,8 +383,15 @@ export default function TeamSettingsPage() {
           </div>
 
           {/* ── Two-column: Plans + Members ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-12">
-            {/* Plans column */}
+          <div
+            className={
+              isSelfHosted
+                ? "grid grid-cols-1 gap-8"
+                : "grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-12"
+            }
+          >
+            {/* Plans column — hidden on self-hosted deployments */}
+            {!isSelfHosted && (
             <div className="lg:col-span-3">
               <h2 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#888] mb-4">
                 Plans
@@ -494,9 +508,10 @@ export default function TeamSettingsPage() {
                 </p>
               )}
             </div>
+            )}
 
             {/* Members column */}
-            <div className="lg:col-span-2">
+            <div className={isSelfHosted ? "w-full" : "lg:col-span-2"}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#888]">
                   Members

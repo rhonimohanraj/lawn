@@ -6,6 +6,17 @@ export type TeamPlan = "basic" | "pro";
 
 const GIBIBYTE = 1024 ** 3;
 
+// When LAWN_SELF_HOSTED is truthy, every team is treated as a subscribed
+// pro team with effectively unlimited storage. Stripe is skipped entirely.
+export function isSelfHosted(): boolean {
+  const flag = process.env.LAWN_SELF_HOSTED;
+  return flag === "1" || flag === "true" || flag === "yes";
+}
+
+// 10 PiB — large enough to never trip for on-prem use; callers still get
+// accurate used-bytes reporting for the storage meter.
+const SELF_HOSTED_STORAGE_LIMIT_BYTES = 10 * 1024 * GIBIBYTE * 1024;
+
 export const TEAM_PLAN_MONTHLY_PRICE_USD: Record<TeamPlan, number> = {
   basic: 5,
   pro: 25,
@@ -74,6 +85,15 @@ export async function getTeamSubscriptionState(
     throw new Error("Team not found");
   }
 
+  if (isSelfHosted()) {
+    return {
+      team,
+      subscription: null,
+      plan: "pro" as TeamPlan,
+      hasActiveSubscription: true,
+    };
+  }
+
   const subscription = await getTeamSubscriptionByOrgId(ctx, teamId);
   const subscriptionPlan = resolvePlanFromStripePriceId(subscription?.priceId);
   const plan = subscriptionPlan ?? normalizeStoredTeamPlan(team.plan);
@@ -133,7 +153,9 @@ export async function assertTeamCanStoreBytes(
 ) {
   const state = await assertTeamHasActiveSubscription(ctx, teamId);
   const storageUsedBytes = await getTeamStorageUsedBytes(ctx, teamId);
-  const storageLimitBytes = TEAM_PLAN_STORAGE_LIMIT_BYTES[state.plan];
+  const storageLimitBytes = isSelfHosted()
+    ? SELF_HOSTED_STORAGE_LIMIT_BYTES
+    : TEAM_PLAN_STORAGE_LIMIT_BYTES[state.plan];
   const requestedBytes = Number.isFinite(incomingBytes) ? Math.max(0, incomingBytes) : 0;
 
   if (storageUsedBytes + requestedBytes > storageLimitBytes) {

@@ -32,7 +32,10 @@ function formatTeamPlanLabel(
   plan: string,
   billingStatus?: string,
   stripeSubscriptionId?: string,
+  selfHosted?: boolean,
 ) {
+  if (selfHosted) return "Self-hosted";
+
   if (!stripeSubscriptionId && billingStatus !== "active") {
     return "Unpaid";
   }
@@ -158,16 +161,19 @@ export default function DashboardPage() {
                         team.plan,
                         team.billingStatus,
                         team.stripeSubscriptionId,
+                        (team as { selfHosted?: boolean }).selfHosted,
                       )}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-4">
-                    <Link
-                      to={teamSettingsPath(team.slug)}
-                      className="text-[#888] hover:text-[#1a1a1a] text-sm font-bold transition-colors"
-                    >
-                      Billing
-                    </Link>
+                    {!(team as { selfHosted?: boolean }).selfHosted && (
+                      <Link
+                        to={teamSettingsPath(team.slug)}
+                        className="text-[#888] hover:text-[#1a1a1a] text-sm font-bold transition-colors"
+                      >
+                        Billing
+                      </Link>
+                    )}
                     <Link
                       to={teamHomePath(team.slug)}
                       className="text-[#888] hover:text-[#1a1a1a] text-sm font-bold flex items-center gap-1 transition-colors"
