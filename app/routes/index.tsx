@@ -1,15 +1,31 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { seoHead } from "@/lib/seo";
-import Homepage from "./-home";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useAuth } from "@clerk/tanstack-react-start";
+import { useEffect } from "react";
 
 export const Route = createFileRoute("/")({
-  head: () =>
-    seoHead({
-      title: "lawn — video review for creative teams",
-      description:
-        "Video review and collaboration for creative teams. Frame-accurate comments, unlimited seats, $5/month flat. The open source Frame.io alternative.",
-      path: "/",
-      ogImage: "/og/home.png",
-    }),
-  component: Homepage,
+  component: RootRedirect,
 });
+
+function RootRedirect() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn) {
+      navigate({ to: "/dashboard", replace: true });
+    } else {
+      navigate({
+        to: "/sign-in/$",
+        params: { _splat: "" } as never,
+        replace: true,
+      });
+    }
+  }, [isLoaded, isSignedIn, navigate]);
+
+  return (
+    <div className="min-h-screen bg-[#f0f0e8] flex items-center justify-center text-[#888]">
+      Loading…
+    </div>
+  );
+}

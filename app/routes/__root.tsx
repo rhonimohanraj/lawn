@@ -18,14 +18,14 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "lawn — video review for creative teams" },
+      { title: "Frame — Trident Event Group" },
       {
         name: "description",
         content:
-          "Video review and collaboration for creative teams. Frame-accurate comments, unlimited seats, $5/month flat. The open source Frame.io alternative.",
+          "Private video review for Trident Event Group — wedding cuts, podcast episodes, ad deliverables.",
       },
-      { property: "og:site_name", content: "lawn" },
-      { name: "twitter:site", content: "@theo" },
+      { property: "og:site_name", content: "Frame — TEG" },
+      { name: "robots", content: "noindex, nofollow" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -71,7 +71,23 @@ function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ClerkProvider publishableKey={publishableKey}>
+    <ClerkProvider
+      publishableKey={publishableKey}
+      localization={{
+        signIn: {
+          start: {
+            title: "Sign in to Frame",
+            subtitle: "Welcome back! Please sign in to continue",
+          },
+        },
+        signUp: {
+          start: {
+            title: "Create your Frame account",
+            subtitle: "Welcome! Please fill in the details to get started.",
+          },
+        },
+      }}
+    >
       <RootDocument>{children}</RootDocument>
     </ClerkProvider>
   );
