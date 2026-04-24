@@ -139,9 +139,11 @@ export default function TeamSettingsPage() {
   const canDeleteTeam = isOwner && (isSelfHosted || !hasActiveSubscription);
 
   const storageUsed = billing?.storageUsedBytes ?? 0;
-  const storageLimit = planConfig.storageLimitBytes;
+  const storageLimit = billing?.storageLimitBytes ?? planConfig.storageLimitBytes;
   const storagePct =
-    storageLimit > 0 ? Math.min((storageUsed / storageLimit) * 100, 100) : 0;
+    isSelfHosted || storageLimit <= 0
+      ? 0
+      : Math.min((storageUsed / storageLimit) * 100, 100);
 
   const handleSaveName = async () => {
     if (!editedName.trim()) return;
@@ -360,17 +362,28 @@ export default function TeamSettingsPage() {
               </p>
               <p className="text-xl font-black text-[#1a1a1a]">
                 {billing ? formatBytes(storageUsed) : "—"}
-                <span className="text-sm font-bold text-[#888]">
-                  {" "}
-                  / {formatBytes(storageLimit)}
-                </span>
+                {isSelfHosted ? (
+                  <span className="text-sm font-bold text-[#888]"> on Backblaze B2</span>
+                ) : (
+                  <span className="text-sm font-bold text-[#888]">
+                    {" "}
+                    / {formatBytes(storageLimit)}
+                  </span>
+                )}
               </p>
-              <div className="h-1.5 bg-[#ddd] mt-2">
-                <div
-                  className="h-full bg-[#2d5a2d] transition-all duration-500"
-                  style={{ width: `${storagePct}%` }}
-                />
-              </div>
+              {!isSelfHosted && (
+                <div className="h-1.5 bg-[#ddd] mt-2">
+                  <div
+                    className="h-full bg-[#2d5a2d] transition-all duration-500"
+                    style={{ width: `${storagePct}%` }}
+                  />
+                </div>
+              )}
+              {isSelfHosted && (
+                <p className="text-[10px] text-[#888] mt-2 font-mono">
+                  teg-frame · ca-east-006
+                </p>
+              )}
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-[#888] mb-1">
