@@ -1,7 +1,7 @@
-const SITE_URL = "https://lawn.video";
-const SITE_NAME = "lawn";
+const SITE_URL = "https://frame.tridenteventgroup.ca";
+const SITE_NAME = "Frame";
 const DEFAULT_OG_IMAGE = "/og/default.png";
-const TWITTER_HANDLE = "@theo";
+const TWITTER_HANDLE = "@tridenteventgroup";
 
 type SeoOptions = {
   title: string;
@@ -20,9 +20,9 @@ export function seoHead({
   type = "website",
   noIndex = false,
 }: SeoOptions) {
-  const fullTitle = title.toLowerCase().includes("lawn")
+  const fullTitle = title.toLowerCase().includes("frame")
     ? title
-    : `${title} | lawn`;
+    : `${title} | Frame`;
   const url = `${SITE_URL}${path}`;
   const imageUrl = ogImage.startsWith("http")
     ? ogImage
