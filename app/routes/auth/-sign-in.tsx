@@ -23,7 +23,10 @@ export default function SignInPage() {
           socialButtonsBlockButtonArrow: "text-current",
           formFieldLabel: "text-[#1a1a1a] font-bold uppercase font-mono",
           formFieldInput:
-            "bg-transparent border-2 border-[#1a1a1a] text-[#1a1a1a] focus:border-[#2d5a2d] focus:shadow-[4px_4px_0px_0px_var(--shadow-accent)] focus:ring-0 rounded-none font-mono",
+            "bg-[#f0f0e8] border-2 border-[#1a1a1a] text-[#1a1a1a] placeholder:text-[#888] focus:border-[#2d5a2d] focus:shadow-[4px_4px_0px_0px_var(--shadow-accent)] focus:ring-0 rounded-none font-mono",
+          otpCodeFieldInput:
+            "!bg-[#f0f0e8] !border-2 !border-[#1a1a1a] !text-[#1a1a1a] !text-lg !font-mono !rounded-none focus:!border-[#2d5a2d] focus:!shadow-[4px_4px_0px_0px_var(--shadow-accent)]",
+          otpCodeField: "gap-2",
           footerActionLink: "text-[#2d5a2d] hover:text-[#1a1a1a] font-bold font-mono",
           footerActionText: "text-[#888] font-mono",
           dividerLine: "bg-[#1a1a1a]",

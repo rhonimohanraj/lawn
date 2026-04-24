@@ -1,10 +1,20 @@
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 export function AuthShell({ children }: { children: ReactNode }) {
+  // Force light theme on auth pages — Clerk's appearance is hardcoded to
+  // light colors; rendering inside a dark parent turns the inputs invisible.
+  useEffect(() => {
+    const prev = document.documentElement.getAttribute("data-theme");
+    document.documentElement.setAttribute("data-theme", "light");
+    return () => {
+      if (prev) document.documentElement.setAttribute("data-theme", prev);
+      else document.documentElement.removeAttribute("data-theme");
+    };
+  }, []);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f0f0e8] relative">
-      {/* Subtle grid pattern */}
       <div
         className="absolute inset-0 opacity-[0.03] pointer-events-none"
         style={{
