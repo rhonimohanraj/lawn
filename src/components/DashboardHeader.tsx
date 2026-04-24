@@ -46,44 +46,54 @@ export function DashboardHeader({
     prewarmDashboardIndex(convex),
   );
 
+  const lastPathIndex = paths.length - 1;
+
   return (
-    <header className="flex-shrink-0 border-b-2 border-[#1a1a1a] bg-[#f0f0e8] grid grid-cols-[1fr_auto] sm:grid-cols-[auto_1fr_auto] items-center px-4 sm:px-6">
+    <header className="flex-shrink-0 border-b-2 border-[#1a1a1a] bg-[#f0f0e8] grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 px-4 sm:px-6">
       {/* Breadcrumb */}
-      <div className="flex items-center text-xl font-black tracking-tighter text-[#1a1a1a] min-w-0 h-11 sm:h-14">
+      <div className="flex items-center text-xl font-black tracking-tighter text-[#1a1a1a] min-w-0 h-11 sm:h-14 overflow-hidden">
         <Link
           to="/dashboard"
           preload="intent"
           className="hover:text-[#2d5a2d] transition-colors mr-2 flex-shrink-0"
           {...prewarmHomeIntentHandlers}
         >
-          lawn.
+          Frame
         </Link>
         {paths.map((path, index) => {
-          const isIntermediate = paths.length >= 2 && index < paths.length - 1;
+          const isIntermediate = paths.length >= 2 && index < lastPathIndex;
+          const isLast = index === lastPathIndex;
           return (
-          <div key={index} className={`${isIntermediate ? 'hidden sm:flex' : 'flex'} items-center min-w-0 flex-shrink`}>
-            <span className="text-[#888] mr-2 flex-shrink-0">/</span>
-            {path.href ? (
-              <Link
-                to={path.href}
-                preload="intent"
-                className="hover:text-[#2d5a2d] transition-colors truncate mr-2"
-                {...path.prewarmIntentHandlers}
-              >
-                {path.label}
-              </Link>
-            ) : (
-              <div className="truncate flex items-center gap-3">
-                {path.label}
-              </div>
-            )}
-          </div>
-        );
+            <div
+              key={index}
+              className={`${isIntermediate ? "hidden sm:flex" : "flex"} items-center min-w-0 ${
+                isLast ? "flex-1" : "flex-shrink-0"
+              }`}
+            >
+              <span className="text-[#888] mr-2 flex-shrink-0">/</span>
+              {path.href ? (
+                <Link
+                  to={path.href}
+                  preload="intent"
+                  className={`hover:text-[#2d5a2d] transition-colors truncate mr-2 ${
+                    isLast ? "min-w-0" : ""
+                  }`}
+                  {...path.prewarmIntentHandlers}
+                >
+                  {path.label}
+                </Link>
+              ) : (
+                <div className="truncate min-w-0 flex items-center gap-3">
+                  {path.label}
+                </div>
+              )}
+            </div>
+          );
         })}
       </div>
 
       {/* User controls — pinned top-right */}
-      <div className="row-start-1 col-start-2 sm:col-start-3 flex items-center gap-4 pl-4 border-l-2 border-[#1a1a1a]/10 h-8">
+      <div className="row-start-1 col-start-2 sm:col-start-3 flex items-center gap-4 pl-4 border-l-2 border-[#1a1a1a]/10 h-8 flex-shrink-0">
         <ThemeToggleButton />
         <UserButton
           appearance={{
@@ -106,7 +116,7 @@ export function DashboardHeader({
 
       {/* Children — second row on mobile, middle column on desktop */}
       {children && (
-        <div className="col-span-full pb-2 sm:pb-0 sm:col-span-1 sm:col-start-2 sm:row-start-1 flex items-center gap-2 sm:gap-3 sm:justify-end sm:h-14 sm:pl-4 min-w-0">
+        <div className="col-span-full pb-2 sm:pb-0 sm:col-span-1 sm:col-start-2 sm:row-start-1 flex items-center gap-2 sm:gap-3 sm:justify-end sm:h-14 sm:pl-4 flex-shrink-0">
           {children}
         </div>
       )}
