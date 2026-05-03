@@ -373,6 +373,7 @@ export default function ProjectPage({
             projectId={projectId}
             parentFolderId={folderId}
             onOpen={navigateToFolder}
+            viewMode={viewMode}
           />
         </div>
       )}

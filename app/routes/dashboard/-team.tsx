@@ -35,6 +35,8 @@ import { useRoutePrewarmIntent } from "@/lib/useRoutePrewarmIntent";
 import { prewarmProject } from "./-project.data";
 import { useTeamData } from "./-team.data";
 import { DashboardHeader } from "@/components/DashboardHeader";
+import { ViewModeToggle, type ViewMode } from "@/components/ViewModeToggle";
+import { ProjectListView } from "@/components/projects/ProjectListView";
 
 type TeamProjectCardProps = {
   teamSlug: string;
@@ -129,6 +131,7 @@ export default function TeamPage() {
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   const shouldCanonicalize =
     !!context && !context.isCanonical && pathname !== context.canonicalPath;
@@ -211,6 +214,7 @@ export default function TeamPage() {
             <span className="hidden sm:inline">Members</span>
           </Button>
         )}
+        <ViewModeToggle value={viewMode} onChange={setViewMode} />
         {canCreateProject && (
           <Button onClick={() => setCreateDialogOpen(true)}>
             <Plus className="sm:mr-1.5 h-4 w-4" />
@@ -284,7 +288,7 @@ export default function TeamPage() {
               )}
             </Card>
           </div>
-        ) : (
+        ) : viewMode === "grid" ? (
           <div className={cn(
             "grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 transition-opacity duration-300",
             isLoadingData ? "opacity-0" : "opacity-100"
@@ -302,6 +306,14 @@ export default function TeamPage() {
               />
             ))}
           </div>
+        ) : (
+          <ProjectListView
+            projects={projects ?? []}
+            onOpen={(projectId) => navigate({ to: projectPath(team.slug, projectId) })}
+            onDelete={handleDeleteProject}
+            canDelete={canCreateProject}
+            className={cn("transition-opacity duration-300", isLoadingData ? "opacity-0" : "opacity-100")}
+          />
         )}
       </div>
 

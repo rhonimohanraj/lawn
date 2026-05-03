@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Plus, ArrowRight, Folder } from "lucide-react";
 import { CreateTeamDialog } from "@/components/teams/CreateTeamDialog";
+import { ViewModeToggle, type ViewMode } from "@/components/ViewModeToggle";
+import { ProjectListView } from "@/components/projects/ProjectListView";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { teamHomePath, teamSettingsPath, projectPath } from "@/lib/routes";
@@ -93,6 +95,7 @@ export default function DashboardPage() {
   const { teams } = useDashboardIndexData();
   const navigate = useNavigate({});
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   const isLoading = teams === undefined;
 
@@ -174,6 +177,7 @@ export default function DashboardPage() {
                         Billing
                       </Link>
                     )}
+                    <ViewModeToggle value={viewMode} onChange={setViewMode} />
                     <Link
                       to={teamHomePath(team.slug)}
                       className="text-[#888] hover:text-[#1a1a1a] text-sm font-bold flex items-center gap-1 transition-colors"
@@ -204,7 +208,7 @@ export default function DashboardPage() {
                       </Button>
                     </CardContent>
                   </Card>
-                ) : (
+                ) : viewMode === "grid" ? (
                   <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {team.projects.map((project) => (
                       <DashboardProjectCard
@@ -215,6 +219,11 @@ export default function DashboardPage() {
                       />
                     ))}
                   </div>
+                ) : (
+                  <ProjectListView
+                    projects={team.projects}
+                    onOpen={(projectId) => navigate({ to: projectPath(team.slug, projectId) })}
+                  />
                 )}
               </div>
             );
