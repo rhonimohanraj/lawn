@@ -35,26 +35,22 @@ function parseTitle(title: string): { folderPath: string | null; cleanTitle: str
 
 export const backfillBatch = internalMutation({
   args: {
-    cursor: v.optional(v.id("assets")),
+    cursor: v.optional(v.union(v.string(), v.null())),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? BATCH;
 
-    let q = ctx.db.query("assets");
-    if (args.cursor) {
-      q = q.filter((qb) => qb.gt(qb.field("_id"), args.cursor!));
-    }
-    const candidates = await q.take(limit);
+    const page = await ctx.db
+      .query("assets")
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
 
     let processed = 0;
     let foldered = 0;
     let alreadyFoldered = 0;
     let noSlash = 0;
-    let lastId: Id<"assets"> | undefined = undefined;
 
-    for (const asset of candidates) {
-      lastId = asset._id;
+    for (const asset of page.page) {
       processed++;
 
       if (asset.folderId !== undefined) {
@@ -85,8 +81,8 @@ export const backfillBatch = internalMutation({
       foldered,
       alreadyFoldered,
       noSlash,
-      cursor: lastId,
-      done: candidates.length < limit,
+      cursor: page.continueCursor,
+      done: page.isDone,
     };
   },
 });

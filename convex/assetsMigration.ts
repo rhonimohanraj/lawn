@@ -13,6 +13,12 @@
  *
  * Fields with no semantic change copy 1:1. After this runs in prod and
  * we verify counts, drop the videos table + legacy fields.
+ *
+ * Pagination uses Convex `.paginate({cursor, numItems})` which is the
+ * platform-correct way to walk a table — earlier `_id`-filter+take
+ * bookkeeping silently skipped rows because Convex's natural ordering
+ * is by `_creationTime`, not `_id`, so the cursor inequality didn't
+ * align with the take window.
  */
 
 import { v } from "convex/values";
@@ -21,35 +27,27 @@ import { Doc, Id } from "./_generated/dataModel";
 
 const BATCH = 100;
 
-function inferAssetKind(contentType: string | undefined): Doc<"assets">["assetKind"] {
+function inferAssetKind(_contentType: string | undefined): Doc<"assets">["assetKind"] {
   // Videos table only ever held videos — keep it simple.
   return "video";
 }
 
 export const migrateVideosBatch = internalMutation({
   args: {
-    cursor: v.optional(v.id("videos")),
+    cursor: v.optional(v.union(v.string(), v.null())),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? BATCH;
 
-    let q = ctx.db.query("videos");
-    if (args.cursor) {
-      // Convex doesn't expose cursor pagination by id directly; use
-      // _id ordering with a filter.
-      q = q.filter((qb) => qb.gt(qb.field("_id"), args.cursor!));
-    }
-    const videos = await q.take(limit);
+    const page = await ctx.db
+      .query("videos")
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
 
     let copied = 0;
     let skipped = 0;
-    let lastId: Id<"videos"> | undefined = undefined;
 
-    for (const video of videos) {
-      lastId = video._id;
-
-      // Already migrated?
+    for (const video of page.page) {
       const existing = await ctx.db
         .query("assets")
         .withIndex("by_legacy_video_id", (qb) => qb.eq("legacyVideoId", video._id))
@@ -87,37 +85,32 @@ export const migrateVideosBatch = internalMutation({
     }
 
     return {
-      processed: videos.length,
+      processed: page.page.length,
       copied,
       skipped,
-      cursor: lastId,
-      done: videos.length < limit,
+      cursor: page.continueCursor,
+      done: page.isDone,
     };
   },
 });
 
 export const rewireCommentsBatch = internalMutation({
   args: {
-    cursor: v.optional(v.id("comments")),
+    cursor: v.optional(v.union(v.string(), v.null())),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? BATCH;
 
-    let q = ctx.db.query("comments");
-    if (args.cursor) {
-      q = q.filter((qb) => qb.gt(qb.field("_id"), args.cursor!));
-    }
-    const comments = await q.take(limit);
+    const page = await ctx.db
+      .query("comments")
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
 
     let updated = 0;
     let skipped = 0;
     let orphaned = 0;
-    let lastId: Id<"comments"> | undefined = undefined;
 
-    for (const comment of comments) {
-      lastId = comment._id;
-
+    for (const comment of page.page) {
       if (comment.assetId) {
         skipped++;
         continue;
@@ -141,38 +134,33 @@ export const rewireCommentsBatch = internalMutation({
     }
 
     return {
-      processed: comments.length,
+      processed: page.page.length,
       updated,
       skipped,
       orphaned,
-      cursor: lastId,
-      done: comments.length < limit,
+      cursor: page.continueCursor,
+      done: page.isDone,
     };
   },
 });
 
 export const rewireShareLinksBatch = internalMutation({
   args: {
-    cursor: v.optional(v.id("shareLinks")),
+    cursor: v.optional(v.union(v.string(), v.null())),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? BATCH;
 
-    let q = ctx.db.query("shareLinks");
-    if (args.cursor) {
-      q = q.filter((qb) => qb.gt(qb.field("_id"), args.cursor!));
-    }
-    const links = await q.take(limit);
+    const page = await ctx.db
+      .query("shareLinks")
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
 
     let updated = 0;
     let skipped = 0;
     let orphaned = 0;
-    let lastId: Id<"shareLinks"> | undefined = undefined;
 
-    for (const link of links) {
-      lastId = link._id;
-
+    for (const link of page.page) {
       if (link.assetId) {
         skipped++;
         continue;
@@ -196,12 +184,12 @@ export const rewireShareLinksBatch = internalMutation({
     }
 
     return {
-      processed: links.length,
+      processed: page.page.length,
       updated,
       skipped,
       orphaned,
-      cursor: lastId,
-      done: links.length < limit,
+      cursor: page.continueCursor,
+      done: page.isDone,
     };
   },
 });
