@@ -8,10 +8,13 @@
  * @module
  */
 
+import type * as assetKind from "../assetKind.js";
+import type * as assetsMigration from "../assetsMigration.js";
 import type * as auth from "../auth.js";
 import type * as billing from "../billing.js";
 import type * as billingHelpers from "../billingHelpers.js";
 import type * as comments from "../comments.js";
+import type * as folders from "../folders.js";
 import type * as http from "../http.js";
 import type * as migration from "../migration.js";
 import type * as migrationActions from "../migrationActions.js";
@@ -35,10 +38,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  assetKind: typeof assetKind;
+  assetsMigration: typeof assetsMigration;
   auth: typeof auth;
   billing: typeof billing;
   billingHelpers: typeof billingHelpers;
   comments: typeof comments;
+  folders: typeof folders;
   http: typeof http;
   migration: typeof migration;
   migrationActions: typeof migrationActions;

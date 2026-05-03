@@ -153,6 +153,9 @@ export const remove = mutation({
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new Error("Share link not found");
 
+    if (!link.videoId) {
+      throw new Error("Share link is asset-only; legacy code path cannot mutate it.");
+    }
     await requireVideoAccess(ctx, link.videoId, "member");
 
     await deleteShareAccessGrantsForLink(ctx, args.linkId);
@@ -171,6 +174,9 @@ export const update = mutation({
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new Error("Share link not found");
 
+    if (!link.videoId) {
+      throw new Error("Share link is asset-only; legacy code path cannot mutate it.");
+    }
     await requireVideoAccess(ctx, link.videoId, "member");
 
     const updates: Partial<Doc<"shareLinks">> = {};
@@ -218,6 +224,10 @@ export const getByToken = query({
       return { status: "expired" as const };
     }
 
+    if (!link.videoId) {
+      // Asset-only share link — legacy probe doesn't handle these.
+      return { status: "missing" as const };
+    }
     const video = await ctx.db.get(link.videoId);
     if (!video || video.status !== "ready") {
       return { status: "missing" as const };
@@ -265,6 +275,10 @@ export const issueAccessGrant = mutation({
       return { ok: false, grantToken: null };
     }
 
+    if (!link.videoId) {
+      // Asset-only share link — legacy grant flow doesn't issue for these.
+      return { ok: false, grantToken: null };
+    }
     const video = await ctx.db.get(link.videoId);
     if (!video || video.status !== "ready") {
       return { ok: false, grantToken: null };

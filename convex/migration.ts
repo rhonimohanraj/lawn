@@ -10,6 +10,7 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
+import { assetKindValidator } from "./schema";
 
 const MIGRATION_CLERK_ID = "migration:frameio";
 const MIGRATION_USER_NAME = "Frame.io migration";
@@ -143,5 +144,103 @@ export const getVideoForMigration = internalQuery({
   args: { videoId: v.id("videos") },
   handler: async (ctx, args): Promise<Doc<"videos"> | null> => {
     return await ctx.db.get(args.videoId);
+  },
+});
+
+// ───────────────────────── v2: assets-aware migration ─────────────────────────
+// Same flow as the legacy createVideoStub/setVideoS3Key/etc. above, but writes
+// to the new `assets` table with assetKind + folderId. Used by the
+// /migration/v2/prepare + /migration/v2/complete HTTP routes.
+
+export const createAssetStub = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    folderId: v.optional(v.id("folders")),
+    assetKind: assetKindValidator,
+    title: v.string(),
+    fileSize: v.number(),
+    contentType: v.string(),
+    publicId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("assets", {
+      projectId: args.projectId,
+      folderId: args.folderId,
+      assetKind: args.assetKind,
+      uploadedByClerkId: MIGRATION_CLERK_ID,
+      uploaderName: MIGRATION_USER_NAME,
+      title: args.title,
+      fileSize: args.fileSize,
+      contentType: args.contentType,
+      status: "uploading",
+      // Mux fields are populated only when assetKind === "video".
+      muxAssetStatus: args.assetKind === "video" ? "preparing" : undefined,
+      workflowStatus: "review",
+      visibility: "public",
+      publicId: args.publicId,
+    });
+  },
+});
+
+export const setAssetS3Key = internalMutation({
+  args: { assetId: v.id("assets"), s3Key: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.assetId, { s3Key: args.s3Key });
+  },
+});
+
+export const setAssetMuxAsset = internalMutation({
+  args: { assetId: v.id("assets"), muxAssetId: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.assetId, {
+      muxAssetId: args.muxAssetId,
+      muxAssetStatus: "preparing",
+      status: "processing",
+    });
+  },
+});
+
+export const markAssetReady = internalMutation({
+  args: { assetId: v.id("assets") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.assetId, {
+      status: "ready",
+      uploadError: undefined,
+    });
+  },
+});
+
+export const markAssetFailed = internalMutation({
+  args: { assetId: v.id("assets"), uploadError: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.assetId, {
+      status: "failed",
+      uploadError: args.uploadError,
+    });
+  },
+});
+
+export const addMigrationAssetComment = internalMutation({
+  args: {
+    assetId: v.id("assets"),
+    text: v.string(),
+    userName: v.string(),
+    timestampSeconds: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("comments", {
+      assetId: args.assetId,
+      userName: args.userName,
+      text: args.text,
+      timestampSeconds: args.timestampSeconds,
+      resolved: false,
+    });
+  },
+});
+
+export const getAssetForMigration = internalQuery({
+  args: { assetId: v.id("assets") },
+  handler: async (ctx, args): Promise<Doc<"assets"> | null> => {
+    return await ctx.db.get(args.assetId);
   },
 });

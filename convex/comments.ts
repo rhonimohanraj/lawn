@@ -175,6 +175,9 @@ export const createForShareGrant = mutation({
       throw new Error("Invalid share grant");
     }
 
+    if (!resolved.shareLink.videoId) {
+      throw new Error("Share grant is not for a video (legacy code path).");
+    }
     const video = await ctx.db.get(resolved.shareLink.videoId);
     if (!video || video.status !== "ready") {
       throw new Error("Video not found");
@@ -228,6 +231,9 @@ export const remove = mutation({
     if (!comment) throw new Error("Comment not found");
 
     if (comment.userClerkId !== user.subject) {
+      if (!comment.videoId) {
+        throw new Error("Legacy comment has no videoId; cannot authorize via legacy path.");
+      }
       await requireVideoAccess(ctx, comment.videoId, "admin");
     }
 
@@ -250,6 +256,9 @@ export const toggleResolved = mutation({
     const comment = await ctx.db.get(args.commentId);
     if (!comment) throw new Error("Comment not found");
 
+    if (!comment.videoId) {
+      throw new Error("Legacy comment has no videoId; cannot authorize via legacy path.");
+    }
     await requireVideoAccess(ctx, comment.videoId, "member");
 
     await ctx.db.patch(args.commentId, { resolved: !comment.resolved });
@@ -295,6 +304,9 @@ export const getThreadedForShareGrant = query({
       return [];
     }
 
+    if (!resolved.shareLink.videoId) {
+      return [];
+    }
     const video = await ctx.db.get(resolved.shareLink.videoId);
     if (!video || video.status !== "ready") {
       return [];

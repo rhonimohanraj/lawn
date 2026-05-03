@@ -201,6 +201,11 @@ export const getByShareGrant = query({
       return null;
     }
 
+    // Legacy path — only handles share links pointing at the videos table.
+    // Asset-only shares are handled by assets.getByShareGrant (added later).
+    if (!resolved.shareLink.videoId) {
+      return null;
+    }
     const video = await ctx.db.get(resolved.shareLink.videoId);
     if (!video || video.status !== "ready") {
       return null;
@@ -231,6 +236,9 @@ export const getByShareGrantForDownload = query({
       return null;
     }
 
+    if (!resolved.shareLink.videoId) {
+      return null;
+    }
     const video = await ctx.db.get(resolved.shareLink.videoId);
     if (!video) {
       return null;

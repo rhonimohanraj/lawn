@@ -112,6 +112,10 @@ export async function requireProjectAccess(
   return { user, membership, project };
 }
 
+/**
+ * Legacy: kept until videos.ts/videoActions.ts/videoPresence.ts are
+ * removed in the frontend-rename session. New code uses requireAssetAccess.
+ */
 export async function requireVideoAccess(
   ctx: QueryCtx | MutationCtx,
   videoId: Id<"videos">,
@@ -127,4 +131,38 @@ export async function requireVideoAccess(
   const { membership, project } = await requireProjectAccess(ctx, video.projectId, requiredRole);
 
   return { user, membership, project, video };
+}
+
+export async function requireAssetAccess(
+  ctx: QueryCtx | MutationCtx,
+  assetId: Id<"assets">,
+  requiredRole?: Role
+) {
+  const user = await requireUser(ctx);
+
+  const asset = await ctx.db.get(assetId);
+  if (!asset) {
+    throw new Error("Asset not found");
+  }
+
+  const { membership, project } = await requireProjectAccess(ctx, asset.projectId, requiredRole);
+
+  return { user, membership, project, asset };
+}
+
+export async function requireFolderAccess(
+  ctx: QueryCtx | MutationCtx,
+  folderId: Id<"folders">,
+  requiredRole?: Role
+) {
+  const user = await requireUser(ctx);
+
+  const folder = await ctx.db.get(folderId);
+  if (!folder) {
+    throw new Error("Folder not found");
+  }
+
+  const { membership, project } = await requireProjectAccess(ctx, folder.projectId, requiredRole);
+
+  return { user, membership, project, folder };
 }

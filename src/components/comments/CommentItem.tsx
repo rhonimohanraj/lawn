@@ -19,7 +19,10 @@ import { CommentInput } from "./CommentInput";
 
 interface Comment {
   _id: Id<"comments">;
-  videoId: Id<"videos">;
+  // During the videos→assets migration window the schema makes both fields
+  // optional; legacy data has videoId, new data has assetId.
+  videoId?: Id<"videos">;
+  assetId?: Id<"assets">;
   text: string;
   timestampSeconds: number;
   parentId?: Id<"comments">;
