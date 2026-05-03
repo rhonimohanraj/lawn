@@ -63,33 +63,33 @@ function getPreferredPlaybackId(playbackIds: MuxData["playback_ids"]): string | 
   return playbackIds.find((item) => typeof item.id === "string")?.id;
 }
 
-async function resolveVideoIdFromMuxRefs(
+async function resolveAssetIdFromMuxRefs(
   ctx: ActionCtx,
   data: MuxData,
-): Promise<Id<"videos"> | null> {
+): Promise<Id<"assets"> | null> {
   const uploadId = asString(data.upload_id);
   if (uploadId) {
-    const fromUpload = (await ctx.runQuery(internal.videos.getVideoByMuxUploadId, {
+    const fromUpload = (await ctx.runQuery(internal.assets.getAssetByMuxUploadId, {
       muxUploadId: uploadId,
-    })) as { videoId?: Id<"videos"> } | null;
-    if (fromUpload?.videoId) {
-      return fromUpload.videoId;
+    })) as { assetId?: Id<"assets"> } | null;
+    if (fromUpload?.assetId) {
+      return fromUpload.assetId;
     }
   }
 
   const assetId = asString(data.asset_id);
   if (assetId) {
-    const fromAsset = (await ctx.runQuery(internal.videos.getVideoByMuxAssetId, {
+    const fromAsset = (await ctx.runQuery(internal.assets.getAssetByMuxAssetId, {
       muxAssetId: assetId,
-    })) as { videoId?: Id<"videos"> } | null;
-    if (fromAsset?.videoId) {
-      return fromAsset.videoId;
+    })) as { assetId?: Id<"assets"> } | null;
+    if (fromAsset?.assetId) {
+      return fromAsset.assetId;
     }
   }
 
   const passthrough = asString(data.passthrough);
   if (passthrough) {
-    return passthrough as Id<"videos">;
+    return passthrough as Id<"assets">;
   }
 
   return null;
@@ -139,41 +139,41 @@ export const processWebhook = internalAction({
     try {
       switch (eventType) {
         case "video.asset.created": {
-          const assetId = asString(data.id) ?? asString(data.asset_id);
-          if (!assetId) {
+          const muxAssetIdValue = asString(data.id) ?? asString(data.asset_id);
+          if (!muxAssetIdValue) {
             console.error("Mux asset.created missing asset id");
             break;
           }
 
-          const videoId =
-            (await resolveVideoIdFromMuxRefs(ctx, {
+          const assetId =
+            (await resolveAssetIdFromMuxRefs(ctx, {
               ...data,
-              asset_id: assetId,
+              asset_id: muxAssetIdValue,
             })) ?? null;
 
-          if (!videoId) {
-            console.error("Could not resolve video for Mux asset.created", {
+          if (!assetId) {
+            console.error("Could not resolve asset for Mux asset.created", {
               eventType,
               ...eventSummary,
             });
             break;
           }
 
-          await ctx.runMutation(internal.videos.setMuxAssetReference, {
-            videoId,
-            muxAssetId: assetId,
-          });
-          console.log("Mapped Mux asset to video", {
-            eventType,
-            videoId,
+          await ctx.runMutation(internal.assets.setMuxAssetReference, {
             assetId,
+            muxAssetId: muxAssetIdValue,
+          });
+          console.log("Mapped Mux asset to Convex asset", {
+            eventType,
+            assetId,
+            muxAssetId: muxAssetIdValue,
           });
           break;
         }
 
         case "video.asset.ready": {
-          const assetId = asString(data.id) ?? asString(data.asset_id);
-          if (!assetId) {
+          const muxAssetIdValue = asString(data.id) ?? asString(data.asset_id);
+          if (!muxAssetIdValue) {
             console.error("Mux asset.ready missing asset id");
             break;
           }
@@ -184,54 +184,54 @@ export const processWebhook = internalAction({
             typeof data.duration === "number" ? data.duration : undefined;
 
           if (!resolvedPassthrough || !playbackId || duration === undefined) {
-            const asset = await getMuxAsset(assetId);
-            const assetPlaybackIds = asset.playback_ids as MuxData["playback_ids"];
+            const muxAsset = await getMuxAsset(muxAssetIdValue);
+            const assetPlaybackIds = muxAsset.playback_ids as MuxData["playback_ids"];
 
-            resolvedPassthrough = resolvedPassthrough ?? asString(asset.passthrough);
+            resolvedPassthrough = resolvedPassthrough ?? asString(muxAsset.passthrough);
             playbackId = playbackId ?? getPreferredPlaybackId(assetPlaybackIds);
             duration =
               duration ??
-              (typeof asset.duration === "number" ? asset.duration : undefined);
+              (typeof muxAsset.duration === "number" ? muxAsset.duration : undefined);
           }
 
           if (!playbackId) {
             console.error("Mux asset.ready missing playback id", {
               eventType,
-              assetId,
+              muxAssetId: muxAssetIdValue,
               dataPlaybackIds: summarizePlaybackIds(data.playback_ids),
             });
             break;
           }
 
-          const videoId =
-            (await resolveVideoIdFromMuxRefs(ctx, {
+          const assetId =
+            (await resolveAssetIdFromMuxRefs(ctx, {
               ...data,
-              asset_id: assetId,
+              asset_id: muxAssetIdValue,
               upload_id: asString(data.upload_id),
               passthrough: resolvedPassthrough,
             })) ?? null;
 
-          if (!videoId) {
-            console.error("Could not resolve video for Mux asset.ready", {
+          if (!assetId) {
+            console.error("Could not resolve asset for Mux asset.ready", {
               eventType,
-              assetId,
+              muxAssetId: muxAssetIdValue,
               uploadId: asString(data.upload_id),
               passthrough: resolvedPassthrough,
             });
             break;
           }
 
-          await ctx.runMutation(internal.videos.markAsReady, {
-            videoId,
-            muxAssetId: assetId,
+          await ctx.runMutation(internal.assets.markAsReady, {
+            assetId,
+            muxAssetId: muxAssetIdValue,
             muxPlaybackId: playbackId,
             duration,
             thumbnailUrl: buildMuxThumbnailUrl(playbackId),
           });
-          console.log("Marked video ready from Mux webhook", {
+          console.log("Marked asset ready from Mux webhook", {
             eventType,
-            videoId,
             assetId,
+            muxAssetId: muxAssetIdValue,
             playbackId,
           });
 
@@ -239,30 +239,30 @@ export const processWebhook = internalAction({
         }
 
         case "video.asset.errored": {
-          const assetId = asString(data.id) ?? asString(data.asset_id);
-          const videoId = await resolveVideoIdFromMuxRefs(ctx, {
+          const muxAssetIdValue = asString(data.id) ?? asString(data.asset_id);
+          const assetId = await resolveAssetIdFromMuxRefs(ctx, {
             ...data,
-            asset_id: assetId,
+            asset_id: muxAssetIdValue,
           });
 
-          if (!videoId) {
-            console.error("Could not resolve video for Mux asset.errored", {
+          if (!assetId) {
+            console.error("Could not resolve asset for Mux asset.errored", {
               eventType,
               ...eventSummary,
-              assetId,
+              muxAssetId: muxAssetIdValue,
             });
             break;
           }
 
           const errorMessage = getErrorMessage(data) ?? "Mux failed to process this asset.";
-          console.error("Marking video failed from Mux asset.errored", {
+          console.error("Marking asset failed from Mux asset.errored", {
             eventType,
-            videoId,
             assetId,
+            muxAssetId: muxAssetIdValue,
             errorMessage,
           });
-          await ctx.runMutation(internal.videos.markAsFailed, {
-            videoId,
+          await ctx.runMutation(internal.assets.markAsFailed, {
+            assetId,
             uploadError: errorMessage,
           });
           break;
@@ -281,12 +281,12 @@ export const processWebhook = internalAction({
         case "video.upload.cancelled":
         case "video.upload.errored": {
           const uploadId = asString(data.id) ?? asString(data.upload_id);
-          const videoId = await resolveVideoIdFromMuxRefs(ctx, {
+          const assetId = await resolveAssetIdFromMuxRefs(ctx, {
             ...data,
             upload_id: uploadId,
           });
 
-          if (!videoId) {
+          if (!assetId) {
             console.error("Could not resolve video for Mux upload failure", {
               eventType,
               ...eventSummary,
@@ -298,12 +298,12 @@ export const processWebhook = internalAction({
           const errorMessage = getErrorMessage(data) ?? "Mux upload failed or was cancelled.";
           console.error("Marking video failed from Mux upload failure", {
             eventType,
-            videoId,
+            assetId,
             uploadId,
             errorMessage,
           });
-          await ctx.runMutation(internal.videos.markAsFailed, {
-            videoId,
+          await ctx.runMutation(internal.assets.markAsFailed, {
+            assetId,
             uploadError: errorMessage,
           });
           break;

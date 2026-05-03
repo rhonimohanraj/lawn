@@ -19,8 +19,8 @@ export default function WatchPage() {
   const { user, isLoaded: isUserLoaded } = useUser();
 
   const createComment = useMutation(api.comments.createForPublic);
-  const getPlaybackSession = useAction(api.videoActions.getPublicPlaybackSession);
-  const getDownloadUrl = useAction(api.videoActions.getPublicDownloadUrl);
+  const getPlaybackSession = useAction(api.assetActions.getPublicPlaybackSession);
+  const getDownloadUrl = useAction(api.assetActions.getPublicDownloadUrl);
 
   const { videoData, comments } = useWatchData({ publicId });
   const [playbackSession, setPlaybackSession] = useState<{
@@ -53,7 +53,7 @@ export default function WatchPage() {
   const playerRef = useRef<VideoPlayerHandle | null>(null);
 
   useEffect(() => {
-    if (!videoData?.video?.muxPlaybackId) {
+    if (!videoData?.asset?.muxPlaybackId) {
       setPlaybackSession(null);
       return;
     }
@@ -79,7 +79,7 @@ export default function WatchPage() {
     return () => {
       cancelled = true;
     };
-  }, [getPlaybackSession, publicId, videoData?.video?.muxPlaybackId]);
+  }, [getPlaybackSession, publicId, videoData?.asset?.muxPlaybackId]);
 
   useEffect(() => {
     setIsDownloading(false);
@@ -162,7 +162,7 @@ export default function WatchPage() {
     );
   }
 
-  if (!videoData?.video) {
+  if (!videoData?.asset) {
     return (
       <div className="min-h-screen bg-[#f0f0e8] flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -185,7 +185,7 @@ export default function WatchPage() {
     );
   }
 
-  const video = videoData.video;
+  const video = videoData.asset;
 
   return (
     <div className="h-[100dvh] flex flex-col bg-[#f0f0e8]">

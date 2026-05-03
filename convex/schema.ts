@@ -4,11 +4,16 @@ import { v } from "convex/values";
 // ────────────────────────────────────────────────────────────────────────────
 // Frame schema
 //
-// We are mid-rename: `videos` → `assets`. Until the prod data migration runs
-// (see convex/assetsMigration.ts), the schema keeps BOTH tables defined and
-// foreign-key fields on comments/shareLinks accept either `videoId` (legacy)
-// or `assetId` (new). Once the migration is verified in prod, drop `videos`
-// and the legacy fields in a follow-up commit.
+// `assets` is the canonical content table — replaces the old `videos` table.
+// `assetKind` enum gates per-type behavior (only "video" runs through Mux).
+// `folders` enables arbitrary nesting within a project.
+//
+// The data migration in convex/assetsMigration.ts must run BEFORE this
+// schema deploys to prod — it copies videos → assets and rewires comments
+// + shareLinks foreign keys. Run from the Convex dashboard or via
+// `bunx convex run assetsMigration:migrateVideosBatch` etc., re-running
+// each batch until {done: true, processed: 0}, then verify with
+// `bunx convex run assetsMigration:migrationStatus` before this deploys.
 // ────────────────────────────────────────────────────────────────────────────
 
 export const ASSET_KINDS = [

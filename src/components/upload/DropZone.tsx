@@ -31,9 +31,10 @@ export function DropZone({ onFilesSelected, disabled, className }: DropZoneProps
 
       if (disabled) return;
 
-      const files = Array.from(e.dataTransfer.files).filter((file) =>
-        file.type.startsWith("video/")
-      );
+      // Frame accepts every file type. Server classifies into assetKind
+      // and only video runs through Mux; other kinds are stored + viewed
+      // directly from B2.
+      const files = Array.from(e.dataTransfer.files);
 
       if (files.length > 0) {
         onFilesSelected(files);
@@ -71,7 +72,6 @@ export function DropZone({ onFilesSelected, disabled, className }: DropZoneProps
     >
       <input
         type="file"
-        accept="video/*"
         multiple
         onChange={handleChange}
         disabled={disabled}

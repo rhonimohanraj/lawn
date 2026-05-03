@@ -6,7 +6,7 @@ import {
   identityAvatarUrl,
   identityName,
   requireProjectAccess,
-  requireVideoAccess,
+  requireAssetAccess,
 } from "./auth";
 import { findShareLinkByToken } from "./shareAccess";
 
@@ -19,8 +19,8 @@ const watcherDataValidator = v.object({
   avatarUrl: v.optional(v.string()),
 });
 
-function roomIdForVideo(videoId: string) {
-  return `video:${videoId}`;
+function roomIdForVideo(assetId: string) {
+  return `asset:${assetId}`;
 }
 
 function guestDisplayName(clientId: string) {
@@ -31,7 +31,7 @@ function guestDisplayName(clientId: string) {
 async function hasShareTokenAccess(
   ctx: MutationCtx,
   shareToken: string | undefined,
-  videoId: string,
+  assetId: string,
 ) {
   if (!shareToken) return false;
 
@@ -39,12 +39,12 @@ async function hasShareTokenAccess(
   if (!shareLink) return false;
   if (shareLink.expiresAt && shareLink.expiresAt <= Date.now()) return false;
 
-  return shareLink.videoId === videoId;
+  return shareLink.assetId === assetId;
 }
 
 export const heartbeat = mutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     sessionId: v.string(),
     clientId: v.string(),
     interval: v.optional(v.number()),
@@ -57,30 +57,30 @@ export const heartbeat = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
 
-    let hasVideoAccess = false;
+    let hasAssetAccess = false;
     if (identity) {
       try {
-        await requireVideoAccess(ctx, args.videoId, "viewer");
-        hasVideoAccess = true;
+        await requireAssetAccess(ctx, args.assetId, "viewer");
+        hasAssetAccess = true;
       } catch {
-        hasVideoAccess = false;
+        hasAssetAccess = false;
       }
     }
 
     const hasTokenAccess = await hasShareTokenAccess(
       ctx,
       args.shareToken,
-      args.videoId,
+      args.assetId,
     );
 
-    if (!hasVideoAccess && !hasTokenAccess) {
+    if (!hasAssetAccess && !hasTokenAccess) {
       throw new ConvexError({
         code: "UNAUTHORIZED",
-        message: "You do not have access to this video.",
+        message: "You do not have access to this asset.",
       });
     }
 
-    const roomId = roomIdForVideo(args.videoId);
+    const roomId = roomIdForVideo(args.assetId);
     let userId: string;
     let data: {
       kind: "member" | "guest";
@@ -209,21 +209,21 @@ export const listProjectOnlineCounts = query({
   handler: async (ctx, args) => {
     await requireProjectAccess(ctx, args.projectId, "viewer");
 
-    const videos = await ctx.db
-      .query("videos")
+    const assets = await ctx.db
+      .query("assets")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
     const counts: Record<string, number> = {};
 
     await Promise.all(
-      videos.map(async (video) => {
+      assets.map(async (asset) => {
         const onlineUsers = await presence.listRoom(
           ctx,
-          roomIdForVideo(video._id),
+          roomIdForVideo(asset._id),
           true,
         );
-        counts[video._id] = onlineUsers.length;
+        counts[asset._id] = onlineUsers.length;
       }),
     );
 

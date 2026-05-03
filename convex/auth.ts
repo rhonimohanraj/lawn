@@ -112,27 +112,6 @@ export async function requireProjectAccess(
   return { user, membership, project };
 }
 
-/**
- * Legacy: kept until videos.ts/videoActions.ts/videoPresence.ts are
- * removed in the frontend-rename session. New code uses requireAssetAccess.
- */
-export async function requireVideoAccess(
-  ctx: QueryCtx | MutationCtx,
-  videoId: Id<"videos">,
-  requiredRole?: Role
-) {
-  const user = await requireUser(ctx);
-
-  const video = await ctx.db.get(videoId);
-  if (!video) {
-    throw new Error("Video not found");
-  }
-
-  const { membership, project } = await requireProjectAccess(ctx, video.projectId, requiredRole);
-
-  return { user, membership, project, video };
-}
-
 export async function requireAssetAccess(
   ctx: QueryCtx | MutationCtx,
   assetId: Id<"assets">,

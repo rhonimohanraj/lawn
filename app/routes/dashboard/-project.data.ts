@@ -18,7 +18,7 @@ export function getProjectEssentialSpecs(params: {
     makeRouteQuerySpec(api.projects.get, {
       projectId: params.projectId,
     }),
-    makeRouteQuerySpec(api.videos.list, {
+    makeRouteQuerySpec(api.assets.list, {
       projectId: params.projectId,
     }),
   ];
@@ -39,7 +39,7 @@ export function useProjectData(params: {
     resolvedProjectId ? { projectId: resolvedProjectId } : "skip",
   );
   const videos = useQuery(
-    api.videos.list,
+    api.assets.list,
     resolvedProjectId ? { projectId: resolvedProjectId } : "skip",
   );
 

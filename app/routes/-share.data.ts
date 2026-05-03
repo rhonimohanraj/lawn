@@ -19,7 +19,7 @@ export function useShareData(params: { token: string; grantToken?: string | null
   });
 
   const videoData = useQuery(
-    api.videos.getByShareGrant,
+    api.assets.getByShareGrant,
     params.grantToken ? { grantToken: params.grantToken } : "skip",
   );
 

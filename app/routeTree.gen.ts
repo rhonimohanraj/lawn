@@ -30,7 +30,7 @@ import { Route as DashboardTeamSlugIndexRouteImport } from './routes/dashboard/$
 import { Route as DashboardTeamSlugSettingsRouteImport } from './routes/dashboard/$teamSlug.settings'
 import { Route as DashboardTeamSlugProjectIdRouteImport } from './routes/dashboard/$teamSlug.$projectId'
 import { Route as DashboardTeamSlugProjectIdIndexRouteImport } from './routes/dashboard/$teamSlug.$projectId.index'
-import { Route as DashboardTeamSlugProjectIdVideoIdRouteImport } from './routes/dashboard/$teamSlug.$projectId.$videoId'
+import { Route as DashboardTeamSlugProjectIdVideoIdRouteImport } from './routes/dashboard/$teamSlug.$projectId.$assetId'
 
 const SignUpRoute = SignUpRouteImport.update({
   id: '/sign-up',
@@ -142,8 +142,8 @@ const DashboardTeamSlugProjectIdIndexRoute =
   } as any)
 const DashboardTeamSlugProjectIdVideoIdRoute =
   DashboardTeamSlugProjectIdVideoIdRouteImport.update({
-    id: '/$videoId',
-    path: '/$videoId',
+    id: '/$assetId',
+    path: '/$assetId',
     getParentRoute: () => DashboardTeamSlugProjectIdRoute,
   } as any)
 
@@ -168,7 +168,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/$teamSlug/$projectId': typeof DashboardTeamSlugProjectIdRouteWithChildren
   '/dashboard/$teamSlug/settings': typeof DashboardTeamSlugSettingsRoute
   '/dashboard/$teamSlug/': typeof DashboardTeamSlugIndexRoute
-  '/dashboard/$teamSlug/$projectId/$videoId': typeof DashboardTeamSlugProjectIdVideoIdRoute
+  '/dashboard/$teamSlug/$projectId/$assetId': typeof DashboardTeamSlugProjectIdVideoIdRoute
   '/dashboard/$teamSlug/$projectId/': typeof DashboardTeamSlugProjectIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -189,7 +189,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/dashboard/$teamSlug/settings': typeof DashboardTeamSlugSettingsRoute
   '/dashboard/$teamSlug': typeof DashboardTeamSlugIndexRoute
-  '/dashboard/$teamSlug/$projectId/$videoId': typeof DashboardTeamSlugProjectIdVideoIdRoute
+  '/dashboard/$teamSlug/$projectId/$assetId': typeof DashboardTeamSlugProjectIdVideoIdRoute
   '/dashboard/$teamSlug/$projectId': typeof DashboardTeamSlugProjectIdIndexRoute
 }
 export interface FileRoutesById {
@@ -214,7 +214,7 @@ export interface FileRoutesById {
   '/dashboard/$teamSlug/$projectId': typeof DashboardTeamSlugProjectIdRouteWithChildren
   '/dashboard/$teamSlug/settings': typeof DashboardTeamSlugSettingsRoute
   '/dashboard/$teamSlug/': typeof DashboardTeamSlugIndexRoute
-  '/dashboard/$teamSlug/$projectId/$videoId': typeof DashboardTeamSlugProjectIdVideoIdRoute
+  '/dashboard/$teamSlug/$projectId/$assetId': typeof DashboardTeamSlugProjectIdVideoIdRoute
   '/dashboard/$teamSlug/$projectId/': typeof DashboardTeamSlugProjectIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -240,7 +240,7 @@ export interface FileRouteTypes {
     | '/dashboard/$teamSlug/$projectId'
     | '/dashboard/$teamSlug/settings'
     | '/dashboard/$teamSlug/'
-    | '/dashboard/$teamSlug/$projectId/$videoId'
+    | '/dashboard/$teamSlug/$projectId/$assetId'
     | '/dashboard/$teamSlug/$projectId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -261,7 +261,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/dashboard/$teamSlug/settings'
     | '/dashboard/$teamSlug'
-    | '/dashboard/$teamSlug/$projectId/$videoId'
+    | '/dashboard/$teamSlug/$projectId/$assetId'
     | '/dashboard/$teamSlug/$projectId'
   id:
     | '__root__'
@@ -285,7 +285,7 @@ export interface FileRouteTypes {
     | '/dashboard/$teamSlug/$projectId'
     | '/dashboard/$teamSlug/settings'
     | '/dashboard/$teamSlug/'
-    | '/dashboard/$teamSlug/$projectId/$videoId'
+    | '/dashboard/$teamSlug/$projectId/$assetId'
     | '/dashboard/$teamSlug/$projectId/'
   fileRoutesById: FileRoutesById
 }
@@ -454,10 +454,10 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardTeamSlugProjectIdIndexRouteImport
       parentRoute: typeof DashboardTeamSlugProjectIdRoute
     }
-    '/dashboard/$teamSlug/$projectId/$videoId': {
-      id: '/dashboard/$teamSlug/$projectId/$videoId'
-      path: '/$videoId'
-      fullPath: '/dashboard/$teamSlug/$projectId/$videoId'
+    '/dashboard/$teamSlug/$projectId/$assetId': {
+      id: '/dashboard/$teamSlug/$projectId/$assetId'
+      path: '/$assetId'
+      fullPath: '/dashboard/$teamSlug/$projectId/$assetId'
       preLoaderRoute: typeof DashboardTeamSlugProjectIdVideoIdRouteImport
       parentRoute: typeof DashboardTeamSlugProjectIdRoute
     }

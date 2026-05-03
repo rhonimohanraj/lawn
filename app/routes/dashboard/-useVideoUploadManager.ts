@@ -8,7 +8,7 @@ export interface ManagedUploadItem {
   id: string;
   projectId: Id<"projects">;
   file: File;
-  videoId?: Id<"videos">;
+  assetId?: Id<"assets">;
   progress: number;
   status: UploadStatus;
   error?: string;
@@ -25,10 +25,10 @@ function createUploadId() {
 }
 
 export function useVideoUploadManager() {
-  const createVideo = useMutation(api.videos.create);
-  const getUploadUrl = useAction(api.videoActions.getUploadUrl);
-  const markUploadComplete = useAction(api.videoActions.markUploadComplete);
-  const markUploadFailed = useAction(api.videoActions.markUploadFailed);
+  const createVideo = useMutation(api.assets.create);
+  const getUploadUrl = useAction(api.assetActions.getUploadUrl);
+  const markUploadComplete = useAction(api.assetActions.markUploadComplete);
+  const markUploadFailed = useAction(api.assetActions.markUploadFailed);
   const [uploads, setUploads] = useState<ManagedUploadItem[]>([]);
 
   const uploadFilesToProject = useCallback(
@@ -50,29 +50,31 @@ export function useVideoUploadManager() {
           },
         ]);
 
-        let createdVideoId: Id<"videos"> | undefined;
+        let createdVideoId: Id<"assets"> | undefined;
 
         try {
           createdVideoId = await createVideo({
             projectId,
             title,
             fileSize: file.size,
-            contentType: file.type || "video/mp4",
+            contentType: file.type || "application/octet-stream",
+            filename: file.name,
+            // assetKind is auto-classified server-side from contentType + filename.
           });
 
           setUploads((prev) =>
             prev.map((upload) =>
               upload.id === uploadId
-                ? { ...upload, videoId: createdVideoId, status: "uploading" }
+                ? { ...upload, assetId: createdVideoId, status: "uploading" }
                 : upload,
             ),
           );
 
           const { url } = await getUploadUrl({
-            videoId: createdVideoId,
+            assetId: createdVideoId,
             filename: file.name,
             fileSize: file.size,
-            contentType: file.type || "video/mp4",
+            contentType: file.type || "application/octet-stream",
           });
 
           await new Promise<void>((resolve, reject) => {
@@ -140,11 +142,11 @@ export function useVideoUploadManager() {
             });
 
             xhr.open("PUT", url);
-            xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+            xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
             xhr.send(file);
           });
 
-          await markUploadComplete({ videoId: createdVideoId });
+          await markUploadComplete({ assetId: createdVideoId });
 
           setUploads((prev) =>
             prev.map((upload) =>
@@ -170,7 +172,7 @@ export function useVideoUploadManager() {
           );
 
           if (createdVideoId) {
-            markUploadFailed({ videoId: createdVideoId }).catch(console.error);
+            markUploadFailed({ assetId: createdVideoId }).catch(console.error);
           }
         }
       }
@@ -184,8 +186,8 @@ export function useVideoUploadManager() {
       if (upload?.abortController) {
         upload.abortController.abort();
       }
-      if (upload?.videoId) {
-        markUploadFailed({ videoId: upload.videoId }).catch(console.error);
+      if (upload?.assetId) {
+        markUploadFailed({ assetId: upload.assetId }).catch(console.error);
       }
       setUploads((prev) => prev.filter((item) => item.id !== uploadId));
     },

@@ -3,7 +3,7 @@ import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import {
   identityAvatarUrl,
   identityName,
-  requireVideoAccess,
+  requireAssetAccess,
   requireUser,
 } from "./auth";
 import { resolveActiveShareGrant } from "./shareAccess";
@@ -45,30 +45,30 @@ function toPublicCommentPayload(comment: {
   };
 }
 
-async function getPublicVideoByPublicId(
+async function getPublicAssetByPublicId(
   ctx: QueryCtx | MutationCtx,
   publicId: string,
 ) {
-  const video = await ctx.db
-    .query("videos")
+  const asset = await ctx.db
+    .query("assets")
     .withIndex("by_public_id", (q) => q.eq("publicId", publicId))
     .unique();
 
-  if (!video || video.visibility !== "public" || video.status !== "ready") {
+  if (!asset || asset.visibility !== "public" || asset.status !== "ready") {
     return null;
   }
 
-  return video;
+  return asset;
 }
 
 export const list = query({
-  args: { videoId: v.id("videos") },
+  args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
-    await requireVideoAccess(ctx, args.videoId);
+    await requireAssetAccess(ctx, args.assetId);
 
     const comments = await ctx.db
       .query("comments")
-      .withIndex("by_video", (q) => q.eq("videoId", args.videoId))
+      .withIndex("by_asset", (q) => q.eq("assetId", args.assetId))
       .collect();
 
     return comments.sort((a, b) => a.timestampSeconds - b.timestampSeconds);
@@ -77,23 +77,23 @@ export const list = query({
 
 export const create = mutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     text: v.string(),
     timestampSeconds: v.number(),
     parentId: v.optional(v.id("comments")),
   },
   handler: async (ctx, args) => {
-    const { user } = await requireVideoAccess(ctx, args.videoId, "viewer");
+    const { user } = await requireAssetAccess(ctx, args.assetId, "viewer");
 
     if (args.parentId) {
       const parent = await ctx.db.get(args.parentId);
-      if (!parent || parent.videoId !== args.videoId) {
+      if (!parent || parent.assetId !== args.assetId) {
         throw new Error("Invalid parent comment");
       }
     }
 
     return await ctx.db.insert("comments", {
-      videoId: args.videoId,
+      assetId: args.assetId,
       userClerkId: user.subject,
       userName: identityName(user),
       userAvatarUrl: identityAvatarUrl(user),
@@ -127,21 +127,21 @@ export const createForPublic = mutation({
       throw new Error("Name is required to comment as a guest");
     }
 
-    const video = await getPublicVideoByPublicId(ctx, args.publicId);
+    const asset = await getPublicAssetByPublicId(ctx, args.publicId);
 
-    if (!video) {
-      throw new Error("Video not found");
+    if (!asset) {
+      throw new Error("Asset not found");
     }
 
     if (args.parentId) {
       const parent = await ctx.db.get(args.parentId);
-      if (!parent || parent.videoId !== video._id) {
+      if (!parent || parent.assetId !== asset._id) {
         throw new Error("Invalid parent comment");
       }
     }
 
     return await ctx.db.insert("comments", {
-      videoId: video._id,
+      assetId: asset._id,
       userClerkId: identity?.subject,
       userName: identity ? identityName(identity) : (guestName as string),
       userAvatarUrl: identity ? identityAvatarUrl(identity) : undefined,
@@ -175,23 +175,23 @@ export const createForShareGrant = mutation({
       throw new Error("Invalid share grant");
     }
 
-    if (!resolved.shareLink.videoId) {
-      throw new Error("Share grant is not for a video (legacy code path).");
+    if (!resolved.shareLink.assetId) {
+      throw new Error("Share grant resolved without an assetId.");
     }
-    const video = await ctx.db.get(resolved.shareLink.videoId);
-    if (!video || video.status !== "ready") {
-      throw new Error("Video not found");
+    const asset = await ctx.db.get(resolved.shareLink.assetId);
+    if (!asset || asset.status !== "ready") {
+      throw new Error("Asset not found");
     }
 
     if (args.parentId) {
       const parent = await ctx.db.get(args.parentId);
-      if (!parent || parent.videoId !== video._id) {
+      if (!parent || parent.assetId !== asset._id) {
         throw new Error("Invalid parent comment");
       }
     }
 
     return await ctx.db.insert("comments", {
-      videoId: video._id,
+      assetId: asset._id,
       userClerkId: identity?.subject,
       userName: identity ? identityName(identity) : (guestName as string),
       userAvatarUrl: identity ? identityAvatarUrl(identity) : undefined,
@@ -231,10 +231,10 @@ export const remove = mutation({
     if (!comment) throw new Error("Comment not found");
 
     if (comment.userClerkId !== user.subject) {
-      if (!comment.videoId) {
-        throw new Error("Legacy comment has no videoId; cannot authorize via legacy path.");
+      if (!comment.assetId) {
+        throw new Error("Comment missing assetId — corrupt row.");
       }
-      await requireVideoAccess(ctx, comment.videoId, "admin");
+      await requireAssetAccess(ctx, comment.assetId, "admin");
     }
 
     const replies = await ctx.db
@@ -256,23 +256,23 @@ export const toggleResolved = mutation({
     const comment = await ctx.db.get(args.commentId);
     if (!comment) throw new Error("Comment not found");
 
-    if (!comment.videoId) {
-      throw new Error("Legacy comment has no videoId; cannot authorize via legacy path.");
+    if (!comment.assetId) {
+      throw new Error("Comment missing assetId — corrupt row.");
     }
-    await requireVideoAccess(ctx, comment.videoId, "member");
+    await requireAssetAccess(ctx, comment.assetId, "member");
 
     await ctx.db.patch(args.commentId, { resolved: !comment.resolved });
   },
 });
 
 export const getThreaded = query({
-  args: { videoId: v.id("videos") },
+  args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
-    await requireVideoAccess(ctx, args.videoId);
+    await requireAssetAccess(ctx, args.assetId);
 
     const comments = await ctx.db
       .query("comments")
-      .withIndex("by_video", (q) => q.eq("videoId", args.videoId))
+      .withIndex("by_asset", (q) => q.eq("assetId", args.assetId))
       .collect();
 
     return toThreadedComments(comments);
@@ -282,14 +282,14 @@ export const getThreaded = query({
 export const getThreadedForPublic = query({
   args: { publicId: v.string() },
   handler: async (ctx, args) => {
-    const video = await getPublicVideoByPublicId(ctx, args.publicId);
-    if (!video) {
+    const asset = await getPublicAssetByPublicId(ctx, args.publicId);
+    if (!asset) {
       return [];
     }
 
     const comments = await ctx.db
       .query("comments")
-      .withIndex("by_video", (q) => q.eq("videoId", video._id))
+      .withIndex("by_asset", (q) => q.eq("assetId", asset._id))
       .collect();
 
     return toThreadedComments(comments.map(toPublicCommentPayload));
@@ -304,17 +304,17 @@ export const getThreadedForShareGrant = query({
       return [];
     }
 
-    if (!resolved.shareLink.videoId) {
+    if (!resolved.shareLink.assetId) {
       return [];
     }
-    const video = await ctx.db.get(resolved.shareLink.videoId);
-    if (!video || video.status !== "ready") {
+    const asset = await ctx.db.get(resolved.shareLink.assetId);
+    if (!asset || asset.status !== "ready") {
       return [];
     }
 
     const comments = await ctx.db
       .query("comments")
-      .withIndex("by_video", (q) => q.eq("videoId", video._id))
+      .withIndex("by_asset", (q) => q.eq("assetId", asset._id))
       .collect();
 
     return toThreadedComments(comments.map(toPublicCommentPayload));

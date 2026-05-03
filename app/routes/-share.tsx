@@ -22,8 +22,8 @@ export default function SharePage() {
 
   const issueAccessGrant = useMutation(api.shareLinks.issueAccessGrant);
   const createComment = useMutation(api.comments.createForShareGrant);
-  const getPlaybackSession = useAction(api.videoActions.getSharedPlaybackSession);
-  const getDownloadUrl = useAction(api.videoActions.getSharedDownloadUrl);
+  const getPlaybackSession = useAction(api.assetActions.getSharedPlaybackSession);
+  const getDownloadUrl = useAction(api.assetActions.getSharedDownloadUrl);
 
   const [grantToken, setGrantToken] = useState<string | null>(null);
   const [hasAttemptedAutoGrant, setHasAttemptedAutoGrant] = useState(false);
@@ -64,9 +64,9 @@ export default function SharePage() {
   }, [token]);
 
   const { shareInfo, videoData, comments } = useShareData({ token, grantToken });
-  const canTrackPresence = Boolean(playbackSession?.url && videoData?.video?._id);
+  const canTrackPresence = Boolean(playbackSession?.url && videoData?.asset?._id);
   const { watchers } = useVideoPresence({
-    videoId: videoData?.video?._id,
+    assetId: videoData?.asset?._id,
     enabled: canTrackPresence,
     shareToken: token,
   });
@@ -287,7 +287,7 @@ export default function SharePage() {
     );
   }
 
-  if (!videoData?.video) {
+  if (!videoData?.asset) {
     return (
       <div className="min-h-screen bg-[#f0f0e8] flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -305,7 +305,7 @@ export default function SharePage() {
     );
   }
 
-  const video = videoData.video;
+  const video = videoData.asset;
 
   return (
     <div className="min-h-screen bg-[#f0f0e8]">

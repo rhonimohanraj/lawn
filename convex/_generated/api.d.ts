@@ -8,13 +8,17 @@
  * @module
  */
 
+import type * as assetActions from "../assetActions.js";
 import type * as assetKind from "../assetKind.js";
+import type * as assetPresence from "../assetPresence.js";
+import type * as assets from "../assets.js";
 import type * as assetsMigration from "../assetsMigration.js";
 import type * as auth from "../auth.js";
 import type * as billing from "../billing.js";
 import type * as billingHelpers from "../billingHelpers.js";
 import type * as comments from "../comments.js";
 import type * as folders from "../folders.js";
+import type * as foldersBackfill from "../foldersBackfill.js";
 import type * as http from "../http.js";
 import type * as migration from "../migration.js";
 import type * as migrationActions from "../migrationActions.js";
@@ -26,9 +30,6 @@ import type * as security from "../security.js";
 import type * as shareAccess from "../shareAccess.js";
 import type * as shareLinks from "../shareLinks.js";
 import type * as teams from "../teams.js";
-import type * as videoActions from "../videoActions.js";
-import type * as videoPresence from "../videoPresence.js";
-import type * as videos from "../videos.js";
 import type * as workspace from "../workspace.js";
 
 import type {
@@ -38,13 +39,17 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  assetActions: typeof assetActions;
   assetKind: typeof assetKind;
+  assetPresence: typeof assetPresence;
+  assets: typeof assets;
   assetsMigration: typeof assetsMigration;
   auth: typeof auth;
   billing: typeof billing;
   billingHelpers: typeof billingHelpers;
   comments: typeof comments;
   folders: typeof folders;
+  foldersBackfill: typeof foldersBackfill;
   http: typeof http;
   migration: typeof migration;
   migrationActions: typeof migrationActions;
@@ -56,9 +61,6 @@ declare const fullApi: ApiFromModules<{
   shareAccess: typeof shareAccess;
   shareLinks: typeof shareLinks;
   teams: typeof teams;
-  videoActions: typeof videoActions;
-  videoPresence: typeof videoPresence;
-  videos: typeof videos;
   workspace: typeof workspace;
 }>;
 

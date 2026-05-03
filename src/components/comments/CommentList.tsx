@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 type ThreadedComments = FunctionReturnType<typeof api.comments.getThreaded>;
 
 interface CommentListProps {
-  videoId: Id<"videos">;
+  assetId: Id<"assets">;
   comments?: ThreadedComments;
   onTimestampClick: (seconds: number) => void;
   highlightedCommentId?: Id<"comments">;
@@ -18,13 +18,13 @@ interface CommentListProps {
 }
 
 export function CommentList({
-  videoId,
+  assetId,
   comments: providedComments,
   onTimestampClick,
   highlightedCommentId,
   canResolve = false,
 }: CommentListProps) {
-  const queriedComments = useQuery(api.comments.getThreaded, { videoId });
+  const queriedComments = useQuery(api.comments.getThreaded, { assetId });
   const comments = providedComments ?? queriedComments;
 
   if (comments === undefined) {

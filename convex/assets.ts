@@ -1,10 +1,12 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query, MutationCtx } from "./_generated/server";
-import { identityName, requireProjectAccess, requireVideoAccess } from "./auth";
+import { identityName, requireProjectAccess, requireAssetAccess } from "./auth";
 import { Id } from "./_generated/dataModel";
 import { generateUniqueToken } from "./security";
 import { resolveActiveShareGrant } from "./shareAccess";
 import { assertTeamCanStoreBytes } from "./billingHelpers";
+import { assetKindValidator } from "./schema";
+import { classifyAssetKind } from "./assetKind";
 
 const workflowStatusValidator = v.union(
   v.literal("review"),
@@ -28,7 +30,7 @@ async function generatePublicId(ctx: MutationCtx) {
     32,
     async (candidate) =>
       (await ctx.db
-        .query("videos")
+        .query("assets")
         .withIndex("by_public_id", (q) => q.eq("publicId", candidate))
         .unique()) !== null,
     5,
@@ -52,18 +54,34 @@ async function deleteShareAccessGrantsForLink(
 export const create = mutation({
   args: {
     projectId: v.id("projects"),
+    folderId: v.optional(v.id("folders")),
     title: v.string(),
     description: v.optional(v.string()),
     fileSize: v.optional(v.number()),
     contentType: v.optional(v.string()),
+    assetKind: v.optional(assetKindValidator),
+    filename: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { user, project } = await requireProjectAccess(ctx, args.projectId, "member");
     await assertTeamCanStoreBytes(ctx, project.teamId, args.fileSize ?? 0);
-    const publicId = await generatePublicId(ctx);
 
-    const videoId = await ctx.db.insert("videos", {
+    if (args.folderId) {
+      const folder = await ctx.db.get(args.folderId);
+      if (!folder || folder.projectId !== args.projectId) {
+        throw new Error("Folder does not belong to this project.");
+      }
+    }
+
+    const publicId = await generatePublicId(ctx);
+    const kind =
+      args.assetKind ??
+      classifyAssetKind({ contentType: args.contentType, filename: args.filename ?? args.title });
+
+    const assetId = await ctx.db.insert("assets", {
       projectId: args.projectId,
+      folderId: args.folderId,
+      assetKind: kind,
       uploadedByClerkId: user.subject,
       uploaderName: identityName(user),
       title: args.title,
@@ -71,38 +89,60 @@ export const create = mutation({
       fileSize: args.fileSize,
       contentType: args.contentType,
       status: "uploading",
-      muxAssetStatus: "preparing",
+      // Mux only runs for videos; non-video kinds skip the prep state entirely.
+      muxAssetStatus: kind === "video" ? "preparing" : undefined,
       workflowStatus: "review",
       visibility: "public",
       publicId,
     });
 
-    return videoId;
+    return assetId;
   },
 });
 
+/**
+ * List assets in a project. When folderId is provided (or omitted to mean the
+ * project root, i.e. folderId === undefined), only assets directly inside that
+ * folder are returned — used by the folder tree UI for per-folder grids.
+ *
+ * To list every asset in a project regardless of folder, pass scope: "all".
+ */
 export const list = query({
-  args: { projectId: v.id("projects") },
+  args: {
+    projectId: v.id("projects"),
+    folderId: v.optional(v.id("folders")),
+    scope: v.optional(v.union(v.literal("folder"), v.literal("all"))),
+  },
   handler: async (ctx, args) => {
     await requireProjectAccess(ctx, args.projectId);
 
-    const videos = await ctx.db
-      .query("videos")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .order("desc")
-      .collect();
+    const scope = args.scope ?? "folder";
+    const assets =
+      scope === "all"
+        ? await ctx.db
+            .query("assets")
+            .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+            .order("desc")
+            .collect()
+        : await ctx.db
+            .query("assets")
+            .withIndex("by_project_and_folder", (q) =>
+              q.eq("projectId", args.projectId).eq("folderId", args.folderId),
+            )
+            .order("desc")
+            .collect();
 
     return await Promise.all(
-      videos.map(async (video) => {
+      assets.map(async (asset) => {
         const comments = await ctx.db
           .query("comments")
-          .withIndex("by_video", (q) => q.eq("videoId", video._id))
+          .withIndex("by_asset", (q) => q.eq("assetId", asset._id))
           .collect();
 
         return {
-          ...video,
-          uploaderName: video.uploaderName ?? "Unknown",
-          workflowStatus: normalizeWorkflowStatus(video.workflowStatus),
+          ...asset,
+          uploaderName: asset.uploaderName ?? "Unknown",
+          workflowStatus: normalizeWorkflowStatus(asset.workflowStatus),
           commentCount: comments.length,
         };
       }),
@@ -111,13 +151,13 @@ export const list = query({
 });
 
 export const get = query({
-  args: { videoId: v.id("videos") },
+  args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
-    const { video, membership } = await requireVideoAccess(ctx, args.videoId);
+    const { asset, membership } = await requireAssetAccess(ctx, args.assetId);
     return {
-      ...video,
-      uploaderName: video.uploaderName ?? "Unknown",
-      workflowStatus: normalizeWorkflowStatus(video.workflowStatus),
+      ...asset,
+      uploaderName: asset.uploaderName ?? "Unknown",
+      workflowStatus: normalizeWorkflowStatus(asset.workflowStatus),
       role: membership.role,
     };
   },
@@ -126,26 +166,27 @@ export const get = query({
 export const getByPublicId = query({
   args: { publicId: v.string() },
   handler: async (ctx, args) => {
-    const video = await ctx.db
-      .query("videos")
+    const asset = await ctx.db
+      .query("assets")
       .withIndex("by_public_id", (q) => q.eq("publicId", args.publicId))
       .unique();
 
-    if (!video || video.visibility !== "public" || video.status !== "ready") {
+    if (!asset || asset.visibility !== "public" || asset.status !== "ready") {
       return null;
     }
 
     return {
-      video: {
-        _id: video._id,
-        title: video.title,
-        description: video.description,
-        duration: video.duration,
-        thumbnailUrl: video.thumbnailUrl,
-        muxAssetId: video.muxAssetId,
-        muxPlaybackId: video.muxPlaybackId,
-        contentType: video.contentType,
-        s3Key: video.s3Key,
+      asset: {
+        _id: asset._id,
+        assetKind: asset.assetKind,
+        title: asset.title,
+        description: asset.description,
+        duration: asset.duration,
+        thumbnailUrl: asset.thumbnailUrl,
+        muxAssetId: asset.muxAssetId,
+        muxPlaybackId: asset.muxPlaybackId,
+        contentType: asset.contentType,
+        s3Key: asset.s3Key,
       },
     };
   },
@@ -154,42 +195,42 @@ export const getByPublicId = query({
 export const getByPublicIdForDownload = query({
   args: { publicId: v.string() },
   handler: async (ctx, args) => {
-    const video = await ctx.db
-      .query("videos")
+    const asset = await ctx.db
+      .query("assets")
       .withIndex("by_public_id", (q) => q.eq("publicId", args.publicId))
       .unique();
 
-    if (!video || video.visibility !== "public") {
+    if (!asset || asset.visibility !== "public") {
       return null;
     }
 
     return {
-      video: {
-        _id: video._id,
-        title: video.title,
-        contentType: video.contentType,
-        s3Key: video.s3Key,
-        status: video.status,
+      asset: {
+        _id: asset._id,
+        title: asset.title,
+        contentType: asset.contentType,
+        s3Key: asset.s3Key,
+        status: asset.status,
       },
     };
   },
 });
 
-export const getPublicIdByVideoId = query({
-  args: { videoId: v.string() },
+export const getPublicIdByAssetId = query({
+  args: { assetId: v.string() },
   returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
-    const normalizedVideoId = ctx.db.normalizeId("videos", args.videoId);
-    if (!normalizedVideoId) {
+    const normalizedAssetId = ctx.db.normalizeId("assets", args.assetId);
+    if (!normalizedAssetId) {
       return null;
     }
 
-    const video = await ctx.db.get(normalizedVideoId);
-    if (!video || video.visibility !== "public" || video.status !== "ready" || !video.publicId) {
+    const asset = await ctx.db.get(normalizedAssetId);
+    if (!asset || asset.visibility !== "public" || asset.status !== "ready" || !asset.publicId) {
       return null;
     }
 
-    return video.publicId;
+    return asset.publicId;
   },
 });
 
@@ -201,27 +242,26 @@ export const getByShareGrant = query({
       return null;
     }
 
-    // Legacy path — only handles share links pointing at the videos table.
-    // Asset-only shares are handled by assets.getByShareGrant (added later).
-    if (!resolved.shareLink.videoId) {
+    if (!resolved.shareLink.assetId) {
       return null;
     }
-    const video = await ctx.db.get(resolved.shareLink.videoId);
-    if (!video || video.status !== "ready") {
+    const asset = await ctx.db.get(resolved.shareLink.assetId);
+    if (!asset || asset.status !== "ready") {
       return null;
     }
 
     return {
-      video: {
-        _id: video._id,
-        title: video.title,
-        description: video.description,
-        duration: video.duration,
-        thumbnailUrl: video.thumbnailUrl,
-        muxAssetId: video.muxAssetId,
-        muxPlaybackId: video.muxPlaybackId,
-        contentType: video.contentType,
-        s3Key: video.s3Key,
+      asset: {
+        _id: asset._id,
+        assetKind: asset.assetKind,
+        title: asset.title,
+        description: asset.description,
+        duration: asset.duration,
+        thumbnailUrl: asset.thumbnailUrl,
+        muxAssetId: asset.muxAssetId,
+        muxPlaybackId: asset.muxPlaybackId,
+        contentType: asset.contentType,
+        s3Key: asset.s3Key,
       },
       grantExpiresAt: resolved.grant.expiresAt,
     };
@@ -236,23 +276,23 @@ export const getByShareGrantForDownload = query({
       return null;
     }
 
-    if (!resolved.shareLink.videoId) {
+    if (!resolved.shareLink.assetId) {
       return null;
     }
-    const video = await ctx.db.get(resolved.shareLink.videoId);
-    if (!video) {
+    const asset = await ctx.db.get(resolved.shareLink.assetId);
+    if (!asset) {
       return null;
     }
 
     return {
       allowDownload: resolved.shareLink.allowDownload,
       grantExpiresAt: resolved.grant.expiresAt,
-      video: {
-        _id: video._id,
-        title: video.title,
-        contentType: video.contentType,
-        s3Key: video.s3Key,
-        status: video.status,
+      asset: {
+        _id: asset._id,
+        title: asset.title,
+        contentType: asset.contentType,
+        s3Key: asset.s3Key,
+        status: asset.status,
       },
     };
   },
@@ -260,30 +300,30 @@ export const getByShareGrantForDownload = query({
 
 export const update = mutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireVideoAccess(ctx, args.videoId, "member");
+    await requireAssetAccess(ctx, args.assetId, "member");
 
     const updates: Partial<{ title: string; description: string }> = {};
     if (args.title !== undefined) updates.title = args.title;
     if (args.description !== undefined) updates.description = args.description;
 
-    await ctx.db.patch(args.videoId, updates);
+    await ctx.db.patch(args.assetId, updates);
   },
 });
 
 export const setVisibility = mutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     visibility: visibilityValidator,
   },
   handler: async (ctx, args) => {
-    await requireVideoAccess(ctx, args.videoId, "member");
+    await requireAssetAccess(ctx, args.assetId, "member");
 
-    await ctx.db.patch(args.videoId, {
+    await ctx.db.patch(args.assetId, {
       visibility: args.visibility,
     });
   },
@@ -291,26 +331,26 @@ export const setVisibility = mutation({
 
 export const updateWorkflowStatus = mutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     workflowStatus: workflowStatusValidator,
   },
   handler: async (ctx, args) => {
-    await requireVideoAccess(ctx, args.videoId, "member");
+    await requireAssetAccess(ctx, args.assetId, "member");
 
-    await ctx.db.patch(args.videoId, {
+    await ctx.db.patch(args.assetId, {
       workflowStatus: args.workflowStatus,
     });
   },
 });
 
 export const remove = mutation({
-  args: { videoId: v.id("videos") },
+  args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
-    await requireVideoAccess(ctx, args.videoId, "admin");
+    await requireAssetAccess(ctx, args.assetId, "admin");
 
     const comments = await ctx.db
       .query("comments")
-      .withIndex("by_video", (q) => q.eq("videoId", args.videoId))
+      .withIndex("by_asset", (q) => q.eq("assetId", args.assetId))
       .collect();
     for (const comment of comments) {
       await ctx.db.delete(comment._id);
@@ -318,31 +358,33 @@ export const remove = mutation({
 
     const shareLinks = await ctx.db
       .query("shareLinks")
-      .withIndex("by_video", (q) => q.eq("videoId", args.videoId))
+      .withIndex("by_asset", (q) => q.eq("assetId", args.assetId))
       .collect();
     for (const link of shareLinks) {
       await deleteShareAccessGrantsForLink(ctx, link._id);
       await ctx.db.delete(link._id);
     }
 
-    await ctx.db.delete(args.videoId);
+    await ctx.db.delete(args.assetId);
   },
 });
 
 export const setUploadInfo = internalMutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     s3Key: v.string(),
     fileSize: v.number(),
     contentType: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, {
+    const existing = await ctx.db.get(args.assetId);
+    const isVideo = existing?.assetKind === "video";
+    await ctx.db.patch(args.assetId, {
       s3Key: args.s3Key,
       muxUploadId: undefined,
       muxAssetId: undefined,
       muxPlaybackId: undefined,
-      muxAssetStatus: "preparing",
+      muxAssetStatus: isVideo ? "preparing" : undefined,
       thumbnailUrl: undefined,
       duration: undefined,
       uploadError: undefined,
@@ -355,24 +397,24 @@ export const setUploadInfo = internalMutation({
 
 export const reconcileUploadedObjectMetadata = internalMutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     fileSize: v.number(),
     contentType: v.string(),
   },
   handler: async (ctx, args) => {
-    const video = await ctx.db.get(args.videoId);
-    if (!video) {
-      throw new Error("Video not found");
+    const asset = await ctx.db.get(args.assetId);
+    if (!asset) {
+      throw new Error("Asset not found");
     }
 
-    const project = await ctx.db.get(video.projectId);
+    const project = await ctx.db.get(asset.projectId);
     if (!project) {
       throw new Error("Project not found");
     }
 
     const declaredSize =
-      typeof video.fileSize === "number" && Number.isFinite(video.fileSize)
-        ? Math.max(0, video.fileSize)
+      typeof asset.fileSize === "number" && Number.isFinite(asset.fileSize)
+        ? Math.max(0, asset.fileSize)
         : 0;
     const actualSize = Number.isFinite(args.fileSize) ? Math.max(0, args.fileSize) : 0;
     const sizeDelta = actualSize - declaredSize;
@@ -381,7 +423,7 @@ export const reconcileUploadedObjectMetadata = internalMutation({
       await assertTeamCanStoreBytes(ctx, project.teamId, sizeDelta);
     }
 
-    await ctx.db.patch(args.videoId, {
+    await ctx.db.patch(args.assetId, {
       fileSize: actualSize,
       contentType: args.contentType,
     });
@@ -390,10 +432,10 @@ export const reconcileUploadedObjectMetadata = internalMutation({
 
 export const markAsProcessing = internalMutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, {
+    await ctx.db.patch(args.assetId, {
       status: "processing",
       muxAssetStatus: "preparing",
       uploadError: undefined,
@@ -403,14 +445,14 @@ export const markAsProcessing = internalMutation({
 
 export const markAsReady = internalMutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     muxAssetId: v.string(),
     muxPlaybackId: v.string(),
     duration: v.optional(v.number()),
     thumbnailUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, {
+    await ctx.db.patch(args.assetId, {
       muxAssetId: args.muxAssetId,
       muxPlaybackId: args.muxPlaybackId,
       muxAssetStatus: "ready",
@@ -422,13 +464,45 @@ export const markAsReady = internalMutation({
   },
 });
 
+/**
+ * Non-video kinds (image / audio / doc / other) skip Mux entirely. Once the
+ * S3 PUT is verified, this flips status straight to ready.
+ */
+export const markNonVideoReady = internalMutation({
+  args: { assetId: v.id("assets") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.assetId, {
+      status: "ready",
+      uploadError: undefined,
+    });
+  },
+});
+
+/** Move an asset to a different folder (or to project root via undefined). */
+export const moveToFolder = mutation({
+  args: {
+    assetId: v.id("assets"),
+    folderId: v.optional(v.id("folders")),
+  },
+  handler: async (ctx, args) => {
+    const { asset } = await requireAssetAccess(ctx, args.assetId, "member");
+    if (args.folderId) {
+      const folder = await ctx.db.get(args.folderId);
+      if (!folder || folder.projectId !== asset.projectId) {
+        throw new Error("Target folder is in a different project.");
+      }
+    }
+    await ctx.db.patch(args.assetId, { folderId: args.folderId });
+  },
+});
+
 export const markAsFailed = internalMutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     uploadError: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, {
+    await ctx.db.patch(args.assetId, {
       muxAssetStatus: "errored",
       uploadError: args.uploadError,
       status: "failed",
@@ -438,11 +512,11 @@ export const markAsFailed = internalMutation({
 
 export const setMuxAssetReference = internalMutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     muxAssetId: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, {
+    await ctx.db.patch(args.assetId, {
       muxAssetId: args.muxAssetId,
       muxAssetStatus: "preparing",
       status: "processing",
@@ -452,65 +526,65 @@ export const setMuxAssetReference = internalMutation({
 
 export const setMuxPlaybackId = internalMutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     muxPlaybackId: v.string(),
     thumbnailUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, {
+    await ctx.db.patch(args.assetId, {
       muxPlaybackId: args.muxPlaybackId,
       thumbnailUrl: args.thumbnailUrl,
     });
   },
 });
 
-export const getVideoByMuxUploadId = internalQuery({
+export const getAssetByMuxUploadId = internalQuery({
   args: {
     muxUploadId: v.string(),
   },
   returns: v.union(
     v.object({
-      videoId: v.id("videos"),
+      assetId: v.id("assets"),
     }),
     v.null()
   ),
-  handler: async (ctx, args): Promise<{ videoId: Id<"videos"> } | null> => {
-    const video = await ctx.db
-      .query("videos")
+  handler: async (ctx, args): Promise<{ assetId: Id<"assets"> } | null> => {
+    const asset = await ctx.db
+      .query("assets")
       .withIndex("by_mux_upload_id", (q) => q.eq("muxUploadId", args.muxUploadId))
       .unique();
 
-    if (!video) return null;
-    return { videoId: video._id };
+    if (!asset) return null;
+    return { assetId: asset._id };
   },
 });
 
-export const getVideoByMuxAssetId = internalQuery({
+export const getAssetByMuxAssetId = internalQuery({
   args: {
     muxAssetId: v.string(),
   },
   returns: v.union(
     v.object({
-      videoId: v.id("videos"),
+      assetId: v.id("assets"),
     }),
     v.null()
   ),
-  handler: async (ctx, args): Promise<{ videoId: Id<"videos"> } | null> => {
-    const video = await ctx.db
-      .query("videos")
+  handler: async (ctx, args): Promise<{ assetId: Id<"assets"> } | null> => {
+    const asset = await ctx.db
+      .query("assets")
       .withIndex("by_mux_asset_id", (q) => q.eq("muxAssetId", args.muxAssetId))
       .unique();
 
-    if (!video) return null;
-    return { videoId: video._id };
+    if (!asset) return null;
+    return { assetId: asset._id };
   },
 });
 
-export const getVideoForPlayback = query({
-  args: { videoId: v.id("videos") },
+export const getAssetForPlayback = query({
+  args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
-    const { video } = await requireVideoAccess(ctx, args.videoId, "viewer");
-    return video;
+    const { asset } = await requireAssetAccess(ctx, args.assetId, "viewer");
+    return asset;
   },
 });
 
@@ -532,11 +606,11 @@ export const incrementViewCount = mutation({
 
 export const updateDuration = mutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     duration: v.number(),
   },
   handler: async (ctx, args) => {
-    await requireVideoAccess(ctx, args.videoId, "member");
-    await ctx.db.patch(args.videoId, { duration: args.duration });
+    await requireAssetAccess(ctx, args.assetId, "member");
+    await ctx.db.patch(args.assetId, { duration: args.duration });
   },
 });

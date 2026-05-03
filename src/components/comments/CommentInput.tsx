@@ -9,7 +9,7 @@ import { formatTimestamp } from "@/lib/utils";
 import { Send, X } from "lucide-react";
 
 interface CommentInputProps {
-  videoId: Id<"videos">;
+  assetId: Id<"assets">;
   timestampSeconds: number;
   parentId?: Id<"comments">;
   onSubmit?: () => void;
@@ -21,7 +21,7 @@ interface CommentInputProps {
 }
 
 export function CommentInput({
-  videoId,
+  assetId,
   timestampSeconds,
   parentId,
   onSubmit,
@@ -54,7 +54,7 @@ export function CommentInput({
     setIsLoading(true);
     try {
       await createComment({
-        videoId,
+        assetId,
         text: text.trim(),
         timestampSeconds,
         parentId,

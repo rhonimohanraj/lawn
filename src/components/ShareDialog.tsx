@@ -34,17 +34,17 @@ import {
 import { formatRelativeTime } from "@/lib/utils";
 
 interface ShareDialogProps {
-  videoId: Id<"videos">;
+  assetId: Id<"assets">;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function ShareDialog({ videoId, open, onOpenChange }: ShareDialogProps) {
-  const video = useQuery(api.videos.get, { videoId });
-  const shareLinks = useQuery(api.shareLinks.list, { videoId });
+export function ShareDialog({ assetId, open, onOpenChange }: ShareDialogProps) {
+  const video = useQuery(api.assets.get, { assetId });
+  const shareLinks = useQuery(api.shareLinks.list, { assetId });
   const createShareLink = useMutation(api.shareLinks.create);
   const deleteShareLink = useMutation(api.shareLinks.remove);
-  const setVisibility = useMutation(api.videos.setVisibility);
+  const setVisibility = useMutation(api.assets.setVisibility);
 
   const [isCreating, setIsCreating] = useState(false);
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
@@ -58,7 +58,7 @@ export function ShareDialog({ videoId, open, onOpenChange }: ShareDialogProps) {
     setIsCreating(true);
     try {
       await createShareLink({
-        videoId,
+        assetId,
         expiresInDays: newLinkOptions.expiresInDays,
         allowDownload: false,
         password: newLinkOptions.password,
@@ -78,7 +78,7 @@ export function ShareDialog({ videoId, open, onOpenChange }: ShareDialogProps) {
     if (!video || isUpdatingVisibility || video.visibility === visibility) return;
     setIsUpdatingVisibility(true);
     try {
-      await setVisibility({ videoId, visibility });
+      await setVisibility({ assetId, visibility });
     } catch (error) {
       console.error("Failed to update visibility:", error);
     } finally {

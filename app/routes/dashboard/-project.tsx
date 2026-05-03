@@ -80,7 +80,7 @@ type VideoIntentTargetProps = {
   className: string;
   teamSlug: string;
   projectId: Id<"projects">;
-  videoId: Id<"videos">;
+  assetId: Id<"assets">;
   muxPlaybackId?: string;
   onOpen: () => void;
   children: ReactNode;
@@ -90,7 +90,7 @@ function VideoIntentTarget({
   className,
   teamSlug,
   projectId,
-  videoId,
+  assetId,
   muxPlaybackId,
   onOpen,
   children,
@@ -100,7 +100,7 @@ function VideoIntentTarget({
     prewarmVideo(convex, {
       teamSlug,
       projectId,
-      videoId,
+      assetId,
     });
     prefetchHlsRuntime();
     if (muxPlaybackId) {
@@ -133,14 +133,14 @@ export default function ProjectPage({
   const { context, resolvedProjectId, resolvedTeamSlug, project, videos } =
     useProjectData({ teamSlug, projectId });
   const projectPresenceCounts = useQuery(
-    api.videoPresence.listProjectOnlineCounts,
+    api.assetPresence.listProjectOnlineCounts,
     resolvedProjectId ? { projectId: resolvedProjectId } : "skip",
   );
   const { requestUpload, uploads } =
     useDashboardUploadContext();
-  const deleteVideo = useMutation(api.videos.remove);
-  const updateVideoWorkflowStatus = useMutation(api.videos.updateWorkflowStatus);
-  const getDownloadUrl = useAction(api.videoActions.getDownloadUrl);
+  const deleteVideo = useMutation(api.assets.remove);
+  const updateVideoWorkflowStatus = useMutation(api.assets.updateWorkflowStatus);
+  const getDownloadUrl = useAction(api.assetActions.getDownloadUrl);
 
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [shareToast, setShareToast] = useState<ShareToastState | null>(null);
@@ -181,19 +181,19 @@ export default function ProjectPage({
     [requestUpload, resolvedProjectId],
   );
 
-  const handleDeleteVideo = async (videoId: Id<"videos">) => {
+  const handleDeleteVideo = async (assetId: Id<"assets">) => {
     if (!confirm("Are you sure you want to delete this video?")) return;
     try {
-      await deleteVideo({ videoId });
+      await deleteVideo({ assetId });
     } catch (error) {
       console.error("Failed to delete video:", error);
     }
   };
 
   const handleDownloadVideo = useCallback(
-    async (videoId: Id<"videos">, title: string) => {
+    async (assetId: Id<"assets">, title: string) => {
       try {
-        const result = await getDownloadUrl({ videoId });
+        const result = await getDownloadUrl({ assetId });
         if (result?.url) {
           triggerDownload(result.url, result.filename ?? `${title}.mp4`);
         }
@@ -205,9 +205,9 @@ export default function ProjectPage({
   );
 
   const handleUpdateWorkflowStatus = useCallback(
-    async (videoId: Id<"videos">, workflowStatus: VideoWorkflowStatus) => {
+    async (assetId: Id<"assets">, workflowStatus: VideoWorkflowStatus) => {
       try {
-        await updateVideoWorkflowStatus({ videoId, workflowStatus });
+        await updateVideoWorkflowStatus({ assetId, workflowStatus });
       } catch (error) {
         console.error("Failed to update video workflow status:", error);
       }
@@ -228,7 +228,7 @@ export default function ProjectPage({
 
   const handleShareVideo = useCallback(
     async (video: {
-      _id: Id<"videos">;
+      _id: Id<"assets">;
       publicId?: string;
       status: string;
       visibility: "public" | "private";
@@ -350,7 +350,7 @@ export default function ProjectPage({
                     className="group cursor-pointer flex flex-col"
                     teamSlug={resolvedTeamSlug}
                     projectId={project._id}
-                    videoId={video._id}
+                    assetId={video._id}
                     muxPlaybackId={video.muxPlaybackId}
                     onOpen={() =>
                       navigate({
@@ -493,7 +493,7 @@ export default function ProjectPage({
                   className="group flex items-center gap-5 px-6 py-3 hover:bg-[#e8e8e0] cursor-pointer transition-colors"
                   teamSlug={resolvedTeamSlug}
                   projectId={project._id}
-                  videoId={video._id}
+                  assetId={video._id}
                   muxPlaybackId={video.muxPlaybackId}
                   onOpen={() =>
                     navigate({

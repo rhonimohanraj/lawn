@@ -61,7 +61,7 @@ export function getMuxClient(): Mux {
   return cachedMux;
 }
 
-export async function createMuxAssetFromInputUrl(videoId: string, inputUrl: string) {
+export async function createMuxAssetFromInputUrl(assetId: string, inputUrl: string) {
   const mux = getMuxClient();
   return await mux.video.assets.create({
     inputs: [{ url: inputUrl }],
@@ -70,7 +70,7 @@ export async function createMuxAssetFromInputUrl(videoId: string, inputUrl: stri
     // Mux currently supports 1080p as the lowest adaptive streaming max tier.
     max_resolution_tier: "1080p",
     mp4_support: "none",
-    passthrough: videoId,
+    passthrough: assetId,
   });
 }
 

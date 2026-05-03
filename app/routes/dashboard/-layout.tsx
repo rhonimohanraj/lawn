@@ -32,15 +32,12 @@ import { prewarmTeam } from "./-team.data";
 import { useVideoUploadManager } from "./-useVideoUploadManager";
 import { DashboardUploadProvider } from "@/lib/dashboardUploadContext";
 
-const VIDEO_FILE_EXTENSIONS = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
-
-function isVideoFile(file: File) {
-  return file.type.startsWith("video/") || VIDEO_FILE_EXTENSIONS.test(file.name);
-}
-
-function getVideoFiles(files: FileList | null) {
+// Frame accepts every file type — server classifies into assetKind. The
+// helper below stays for symmetry with the previous code path but no
+// longer filters by mime/extension.
+function getUploadableFiles(files: FileList | null) {
   if (!files) return [];
-  return Array.from(files).filter(isVideoFile);
+  return Array.from(files);
 }
 
 function dragEventHasFiles(event: DragEvent) {
@@ -60,10 +57,10 @@ export default function DashboardLayout() {
       ? (params.projectId as Id<"projects">)
       : undefined;
   const routeVideoId =
-    typeof params.videoId === "string" ? params.videoId : undefined;
+    typeof params.assetId === "string" ? params.assetId : undefined;
   const publicPlaybackId = useQuery(
-    api.videos.getPublicIdByVideoId,
-    routeVideoId ? { videoId: routeVideoId } : "skip",
+    api.assets.getPublicIdByAssetId,
+    routeVideoId ? { assetId: routeVideoId } : "skip",
   );
   const teamHome = teamSlug ? teamHomePath(teamSlug) : null;
   const settingsPath = teamSlug ? teamSettingsPath(teamSlug) : null;
@@ -90,7 +87,7 @@ export default function DashboardLayout() {
 
   const requestUpload = useCallback(
     (inputFiles: File[], preferredProjectId?: Id<"projects">) => {
-      const files = inputFiles.filter(isVideoFile);
+      const files = inputFiles;
       if (files.length === 0) return;
 
       if (preferredProjectId) {
@@ -170,7 +167,7 @@ export default function DashboardLayout() {
       dragDepthRef.current = 0;
       setIsGlobalDragActive(false);
 
-      const files = getVideoFiles(event.dataTransfer?.files ?? null);
+      const files = getUploadableFiles(event.dataTransfer?.files ?? null);
       if (files.length === 0) return;
       requestUpload(files);
     };

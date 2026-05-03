@@ -15,7 +15,7 @@ function names(specs: Array<{ query: unknown }>) {
 test("dashboard route data contracts expose expected essential queries", () => {
   const teamSlug = "garden";
   const projectId = "proj_123" as Id<"projects">;
-  const videoId = "vid_123" as Id<"videos">;
+  const assetId = "vid_123" as Id<"assets">;
 
   assert.deepEqual(names(getDashboardIndexEssentialSpecs()), ["teams:list"]);
 
@@ -33,7 +33,7 @@ test("dashboard route data contracts expose expected essential queries", () => {
   );
 
   assert.deepEqual(
-    names(getVideoEssentialSpecs({ teamSlug, projectId, videoId })),
+    names(getVideoEssentialSpecs({ teamSlug, projectId, assetId })),
     [
       "comments:getThreaded",
       "comments:list",

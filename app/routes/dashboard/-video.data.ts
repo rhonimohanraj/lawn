@@ -9,22 +9,22 @@ import {
 export function getVideoEssentialSpecs(params: {
   teamSlug: string;
   projectId: Id<"projects">;
-  videoId: Id<"videos">;
+  assetId: Id<"assets">;
 }) {
   return [
     makeRouteQuerySpec(api.workspace.resolveContext, {
       teamSlug: params.teamSlug,
       projectId: params.projectId,
-      videoId: params.videoId,
+      assetId: params.assetId,
     }),
-    makeRouteQuerySpec(api.videos.get, {
-      videoId: params.videoId,
+    makeRouteQuerySpec(api.assets.get, {
+      assetId: params.assetId,
     }),
     makeRouteQuerySpec(api.comments.list, {
-      videoId: params.videoId,
+      assetId: params.assetId,
     }),
     makeRouteQuerySpec(api.comments.getThreaded, {
-      videoId: params.videoId,
+      assetId: params.assetId,
     }),
   ];
 }
@@ -32,28 +32,28 @@ export function getVideoEssentialSpecs(params: {
 export function useVideoData(params: {
   teamSlug: string;
   projectId: Id<"projects">;
-  videoId: Id<"videos">;
+  assetId: Id<"assets">;
 }) {
   const context = useQuery(api.workspace.resolveContext, {
     teamSlug: params.teamSlug,
     projectId: params.projectId,
-    videoId: params.videoId,
+    assetId: params.assetId,
   });
   const resolvedTeamSlug = context?.team.slug ?? params.teamSlug;
   const resolvedProjectId = context?.project?._id;
-  const resolvedVideoId = context?.video?._id;
+  const resolvedVideoId = context?.asset?._id;
 
   const video = useQuery(
-    api.videos.get,
-    resolvedVideoId ? { videoId: resolvedVideoId } : "skip",
+    api.assets.get,
+    resolvedVideoId ? { assetId: resolvedVideoId } : "skip",
   );
   const comments = useQuery(
     api.comments.list,
-    resolvedVideoId ? { videoId: resolvedVideoId } : "skip",
+    resolvedVideoId ? { assetId: resolvedVideoId } : "skip",
   );
   const commentsThreaded = useQuery(
     api.comments.getThreaded,
-    resolvedVideoId ? { videoId: resolvedVideoId } : "skip",
+    resolvedVideoId ? { assetId: resolvedVideoId } : "skip",
   );
 
   return {
@@ -72,7 +72,7 @@ export async function prewarmVideo(
   params: {
     teamSlug: string;
     projectId: Id<"projects">;
-    videoId: Id<"videos">;
+    assetId: Id<"assets">;
   },
 ) {
   prewarmSpecs(convex, getVideoEssentialSpecs(params));

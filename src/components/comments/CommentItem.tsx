@@ -19,10 +19,11 @@ import { CommentInput } from "./CommentInput";
 
 interface Comment {
   _id: Id<"comments">;
-  // During the videos→assets migration window the schema makes both fields
-  // optional; legacy data has videoId, new data has assetId.
-  videoId?: Id<"videos">;
+  // assetId is optional only because legacy unmigrated rows in prod still have
+  // videoId instead. Once the assetsMigration runs in prod, every row has
+  // assetId and we can mark it required + drop the videoId fallback.
   assetId?: Id<"assets">;
+  videoId?: Id<"videos">;
   text: string;
   timestampSeconds: number;
   parentId?: Id<"comments">;
@@ -142,10 +143,10 @@ export function CommentItem({
         </div>
       </div>
 
-      {isReplying && (
+      {isReplying && comment.assetId && (
         <div className="mt-3 ml-10">
           <CommentInput
-            videoId={comment.videoId}
+            assetId={comment.assetId}
             timestampSeconds={comment.timestampSeconds}
             parentId={comment._id}
             onSubmit={() => setIsReplying(false)}

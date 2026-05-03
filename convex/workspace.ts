@@ -6,10 +6,10 @@ import { Doc } from "./_generated/dataModel";
 function buildCanonicalPath(input: {
   teamSlug: string;
   projectId?: string;
-  videoId?: string;
+  assetId?: string;
 }) {
-  if (input.videoId && input.projectId) {
-    return `/dashboard/${input.teamSlug}/${input.projectId}/${input.videoId}`;
+  if (input.assetId && input.projectId) {
+    return `/dashboard/${input.teamSlug}/${input.projectId}/${input.assetId}`;
   }
 
   if (input.projectId) {
@@ -23,7 +23,7 @@ export const resolveContext = query({
   args: {
     teamSlug: v.optional(v.string()),
     projectId: v.optional(v.id("projects")),
-    videoId: v.optional(v.id("videos")),
+    assetId: v.optional(v.id("assets")),
   },
   handler: async (ctx, args) => {
     const user = await getUser(ctx);
@@ -31,13 +31,13 @@ export const resolveContext = query({
 
     let team: Doc<"teams"> | null = null;
     let project: Doc<"projects"> | null = null;
-    let video: Doc<"videos"> | null = null;
+    let asset: Doc<"assets"> | null = null;
 
-    if (args.videoId) {
-      video = await ctx.db.get(args.videoId);
-      if (!video) return null;
+    if (args.assetId) {
+      asset = await ctx.db.get(args.assetId);
+      if (!asset) return null;
 
-      project = await ctx.db.get(video.projectId);
+      project = await ctx.db.get(asset.projectId);
       if (!project) return null;
 
       team = await ctx.db.get(project.teamId);
@@ -69,21 +69,21 @@ export const resolveContext = query({
     if (!membership) return null;
 
     const canonicalProjectId = project?._id;
-    const canonicalVideoId = video?._id;
+    const canonicalAssetId = asset?._id;
     const canonicalPath = buildCanonicalPath({
       teamSlug: team.slug,
       projectId: canonicalProjectId,
-      videoId: canonicalVideoId,
+      assetId: canonicalAssetId,
     });
 
     const sameTeamSlug = args.teamSlug === undefined || args.teamSlug === team.slug;
     const sameProjectId =
       args.projectId === undefined || args.projectId === canonicalProjectId;
     const sameVideoId =
-      args.videoId === undefined || args.videoId === canonicalVideoId;
+      args.assetId === undefined || args.assetId === canonicalAssetId;
 
     const sameProjectVideoChain =
-      args.videoId === undefined ||
+      args.assetId === undefined ||
       args.projectId === undefined ||
       args.projectId === canonicalProjectId;
 
@@ -93,7 +93,7 @@ export const resolveContext = query({
         role: membership.role,
       },
       project: project ?? undefined,
-      video: video ?? undefined,
+      asset: asset ?? undefined,
       canonicalPath,
       isCanonical:
         sameTeamSlug && sameProjectId && sameVideoId && sameProjectVideoChain,

@@ -7,7 +7,7 @@ import {
 
 export function getWatchEssentialSpecs(params: { publicId: string }) {
   return [
-    makeRouteQuerySpec(api.videos.getByPublicId, {
+    makeRouteQuerySpec(api.assets.getByPublicId, {
       publicId: params.publicId,
     }),
     makeRouteQuerySpec(api.comments.getThreadedForPublic, {
@@ -17,7 +17,7 @@ export function getWatchEssentialSpecs(params: { publicId: string }) {
 }
 
 export function useWatchData(params: { publicId: string }) {
-  const videoData = useQuery(api.videos.getByPublicId, {
+  const videoData = useQuery(api.assets.getByPublicId, {
     publicId: params.publicId,
   });
 

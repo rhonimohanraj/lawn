@@ -45,7 +45,7 @@ export default function VideoPage() {
   const pathname = useLocation().pathname;
   const teamSlug = typeof params.teamSlug === "string" ? params.teamSlug : "";
   const projectId = params.projectId as Id<"projects">;
-  const videoId = params.videoId as Id<"videos">;
+  const assetId = params.assetId as Id<"assets">;
   const convex = useConvex();
 
   const {
@@ -59,13 +59,13 @@ export default function VideoPage() {
   } = useVideoData({
     teamSlug,
     projectId,
-    videoId,
+    assetId,
   });
-  const updateVideo = useMutation(api.videos.update);
-  const updateVideoWorkflowStatus = useMutation(api.videos.updateWorkflowStatus);
-  const getPlaybackSession = useAction(api.videoActions.getPlaybackSession);
-  const getOriginalPlaybackUrl = useAction(api.videoActions.getOriginalPlaybackUrl);
-  const getDownloadUrl = useAction(api.videoActions.getDownloadUrl);
+  const updateVideo = useMutation(api.assets.update);
+  const updateVideoWorkflowStatus = useMutation(api.assets.updateWorkflowStatus);
+  const getPlaybackSession = useAction(api.assetActions.getPlaybackSession);
+  const getOriginalPlaybackUrl = useAction(api.assetActions.getOriginalPlaybackUrl);
+  const getDownloadUrl = useAction(api.assetActions.getDownloadUrl);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -106,7 +106,7 @@ export default function VideoPage() {
     });
   });
   const { watchers } = useVideoPresence({
-    videoId: resolvedVideoId,
+    assetId: resolvedVideoId,
     enabled: Boolean(resolvedVideoId),
   });
 
@@ -126,7 +126,7 @@ export default function VideoPage() {
     let cancelled = false;
     setIsLoadingPlayback(true);
 
-    void getPlaybackSession({ videoId: resolvedVideoId })
+    void getPlaybackSession({ assetId: resolvedVideoId })
       .then((session) => {
         if (cancelled) return;
         setPlaybackSession(session);
@@ -155,7 +155,7 @@ export default function VideoPage() {
     let cancelled = false;
     setIsLoadingOriginalPlayback(true);
 
-    void getOriginalPlaybackUrl({ videoId: resolvedVideoId })
+    void getOriginalPlaybackUrl({ assetId: resolvedVideoId })
       .then((result) => {
         if (cancelled) return;
         setOriginalPlaybackUrl(result.url);
@@ -186,7 +186,7 @@ export default function VideoPage() {
   const requestDownload = useCallback(async () => {
     if (!video || video.status !== "ready" || !resolvedVideoId) return null;
     try {
-      const result = await getDownloadUrl({ videoId: resolvedVideoId });
+      const result = await getDownloadUrl({ assetId: resolvedVideoId });
       return result;
     } catch (error) {
       console.error("Failed to prepare download:", error);
@@ -205,7 +205,7 @@ export default function VideoPage() {
   const handleSaveTitle = async () => {
     if (!editedTitle.trim() || !video || !resolvedVideoId) return;
     try {
-      await updateVideo({ videoId: resolvedVideoId, title: editedTitle.trim() });
+      await updateVideo({ assetId: resolvedVideoId, title: editedTitle.trim() });
       setIsEditingTitle(false);
     } catch (error) {
       console.error("Failed to update title:", error);
@@ -216,7 +216,7 @@ export default function VideoPage() {
     async (workflowStatus: VideoWorkflowStatus) => {
       if (!resolvedVideoId) return;
       try {
-        await updateVideoWorkflowStatus({ videoId: resolvedVideoId, workflowStatus });
+        await updateVideoWorkflowStatus({ assetId: resolvedVideoId, workflowStatus });
       } catch (error) {
         console.error("Failed to update review status:", error);
       }
@@ -468,7 +468,7 @@ export default function VideoPage() {
           </div>
           <div className="flex-1 overflow-hidden">
             <CommentList
-              videoId={resolvedVideoId}
+              assetId={resolvedVideoId}
               comments={commentsThreaded}
               onTimestampClick={handleTimestampClick}
               highlightedCommentId={highlightedCommentId}
@@ -478,7 +478,7 @@ export default function VideoPage() {
           {canComment && (
             <div className="flex-shrink-0 border-t-2 border-[#1a1a1a] bg-[#f0f0e8]">
               <CommentInput
-                videoId={resolvedVideoId}
+                assetId={resolvedVideoId}
                 timestampSeconds={currentTime}
                 showTimestamp
                 variant="seamless"
@@ -511,7 +511,7 @@ export default function VideoPage() {
           </div>
           <div className="flex-1 overflow-hidden">
             <CommentList
-              videoId={resolvedVideoId}
+              assetId={resolvedVideoId}
               comments={commentsThreaded}
               onTimestampClick={(time) => {
                 handleTimestampClick(time);
@@ -524,7 +524,7 @@ export default function VideoPage() {
           {canComment && (
             <div className="flex-shrink-0 border-t-2 border-[#1a1a1a] bg-[#f0f0e8]">
               <CommentInput
-                videoId={resolvedVideoId}
+                assetId={resolvedVideoId}
                 timestampSeconds={currentTime}
                 showTimestamp
                 variant="seamless"
@@ -535,7 +535,7 @@ export default function VideoPage() {
       )}
 
       <ShareDialog
-        videoId={resolvedVideoId}
+        assetId={resolvedVideoId}
         open={shareDialogOpen}
         onOpenChange={setShareDialogOpen}
       />

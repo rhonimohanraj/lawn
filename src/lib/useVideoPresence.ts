@@ -33,21 +33,21 @@ function getOrCreateClientId() {
 }
 
 export function useVideoPresence(input: {
-  videoId?: Id<"videos">;
+  assetId?: Id<"assets">;
   enabled?: boolean;
   shareToken?: string;
   intervalMs?: number;
 }) {
   const convex = useConvex();
-  const heartbeat = useMutation(api.videoPresence.heartbeat);
-  const disconnect = useMutation(api.videoPresence.disconnect);
+  const heartbeat = useMutation(api.assetPresence.heartbeat);
+  const disconnect = useMutation(api.assetPresence.disconnect);
 
   const [clientId, setClientId] = useState<string | null>(null);
   const [roomToken, setRoomToken] = useState<string | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
 
   const {
-    videoId,
+    assetId,
     enabled = true,
     shareToken,
     intervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
@@ -59,7 +59,7 @@ export function useVideoPresence(input: {
   }, []);
 
   useEffect(() => {
-    if (!enabled || !videoId || !clientId) {
+    if (!enabled || !assetId || !clientId) {
       setRoomToken(null);
       return;
     }
@@ -69,7 +69,7 @@ export function useVideoPresence(input: {
 
     const runHeartbeat = async () => {
       const result = await heartbeat({
-        videoId,
+        assetId,
         sessionId,
         clientId,
         interval: intervalMs,
@@ -117,10 +117,10 @@ export function useVideoPresence(input: {
         });
       }
     };
-  }, [clientId, convex.url, disconnect, enabled, heartbeat, intervalMs, shareToken, videoId]);
+  }, [clientId, convex.url, disconnect, enabled, heartbeat, intervalMs, shareToken, assetId]);
 
   const state = useQuery(
-    api.videoPresence.list,
+    api.assetPresence.list,
     roomToken ? { roomToken } : "skip",
   );
 

@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, MutationCtx } from "./_generated/server";
-import { identityName, requireVideoAccess } from "./auth";
+import { identityName, requireAssetAccess } from "./auth";
 import { generateUniqueToken, hashPassword, verifyPassword } from "./security";
 import { findShareLinkByToken, issueShareAccessGrant } from "./shareAccess";
 
@@ -83,13 +83,13 @@ async function deleteShareAccessGrantsForLink(
 
 export const create = mutation({
   args: {
-    videoId: v.id("videos"),
+    assetId: v.id("assets"),
     expiresInDays: v.optional(v.number()),
     allowDownload: v.optional(v.boolean()),
     password: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { user } = await requireVideoAccess(ctx, args.videoId, "member");
+    const { user } = await requireAssetAccess(ctx, args.assetId, "member");
 
     const token = await generateShareToken(ctx);
     const expiresAt = args.expiresInDays
@@ -101,7 +101,7 @@ export const create = mutation({
       : undefined;
 
     await ctx.db.insert("shareLinks", {
-      videoId: args.videoId,
+      assetId: args.assetId,
       token,
       createdByClerkId: user.subject,
       createdByName: identityName(user),
@@ -119,19 +119,19 @@ export const create = mutation({
 });
 
 export const list = query({
-  args: { videoId: v.id("videos") },
+  args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
-    await requireVideoAccess(ctx, args.videoId);
+    await requireAssetAccess(ctx, args.assetId);
 
     const links = await ctx.db
       .query("shareLinks")
-      .withIndex("by_video", (q) => q.eq("videoId", args.videoId))
+      .withIndex("by_asset", (q) => q.eq("assetId", args.assetId))
       .collect();
 
     const linksWithCreator = links.map((link) => ({
       _id: link._id,
       _creationTime: link._creationTime,
-      videoId: link.videoId,
+      assetId: link.assetId,
       token: link.token,
       createdByClerkId: link.createdByClerkId,
       createdByName: link.createdByName,
@@ -153,10 +153,10 @@ export const remove = mutation({
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new Error("Share link not found");
 
-    if (!link.videoId) {
-      throw new Error("Share link is asset-only; legacy code path cannot mutate it.");
+    if (!link.assetId) {
+      throw new Error("Share link missing assetId — corrupt row.");
     }
-    await requireVideoAccess(ctx, link.videoId, "member");
+    await requireAssetAccess(ctx, link.assetId, "member");
 
     await deleteShareAccessGrantsForLink(ctx, args.linkId);
     await ctx.db.delete(args.linkId);
@@ -174,10 +174,10 @@ export const update = mutation({
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new Error("Share link not found");
 
-    if (!link.videoId) {
-      throw new Error("Share link is asset-only; legacy code path cannot mutate it.");
+    if (!link.assetId) {
+      throw new Error("Share link missing assetId — corrupt row.");
     }
-    await requireVideoAccess(ctx, link.videoId, "member");
+    await requireAssetAccess(ctx, link.assetId, "member");
 
     const updates: Partial<Doc<"shareLinks">> = {};
 
@@ -224,12 +224,12 @@ export const getByToken = query({
       return { status: "expired" as const };
     }
 
-    if (!link.videoId) {
+    if (!link.assetId) {
       // Asset-only share link — legacy probe doesn't handle these.
       return { status: "missing" as const };
     }
-    const video = await ctx.db.get(link.videoId);
-    if (!video || video.status !== "ready") {
+    const asset = await ctx.db.get(link.assetId);
+    if (!asset || asset.status !== "ready") {
       return { status: "missing" as const };
     }
 
@@ -275,12 +275,12 @@ export const issueAccessGrant = mutation({
       return { ok: false, grantToken: null };
     }
 
-    if (!link.videoId) {
+    if (!link.assetId) {
       // Asset-only share link — legacy grant flow doesn't issue for these.
       return { ok: false, grantToken: null };
     }
-    const video = await ctx.db.get(link.videoId);
-    if (!video || video.status !== "ready") {
+    const asset = await ctx.db.get(link.assetId);
+    if (!asset || asset.status !== "ready") {
       return { ok: false, grantToken: null };
     }
 

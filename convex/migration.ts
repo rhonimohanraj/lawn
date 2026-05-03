@@ -69,88 +69,10 @@ export const createProject = internalMutation({
   },
 });
 
-export const createVideoStub = internalMutation({
-  args: {
-    projectId: v.id("projects"),
-    title: v.string(),
-    fileSize: v.number(),
-    contentType: v.string(),
-    publicId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db.insert("videos", {
-      projectId: args.projectId,
-      uploadedByClerkId: MIGRATION_CLERK_ID,
-      uploaderName: MIGRATION_USER_NAME,
-      title: args.title,
-      fileSize: args.fileSize,
-      contentType: args.contentType,
-      status: "uploading",
-      muxAssetStatus: "preparing",
-      workflowStatus: "review",
-      visibility: "public",
-      publicId: args.publicId,
-    });
-  },
-});
-
-export const setVideoS3Key = internalMutation({
-  args: { videoId: v.id("videos"), s3Key: v.string() },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, { s3Key: args.s3Key });
-  },
-});
-
-export const setVideoMuxAsset = internalMutation({
-  args: { videoId: v.id("videos"), muxAssetId: v.string() },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, {
-      muxAssetId: args.muxAssetId,
-      muxAssetStatus: "preparing",
-      status: "processing",
-    });
-  },
-});
-
-export const markVideoFailed = internalMutation({
-  args: { videoId: v.id("videos"), uploadError: v.string() },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.videoId, {
-      status: "failed",
-      uploadError: args.uploadError,
-    });
-  },
-});
-
-export const addMigrationComment = internalMutation({
-  args: {
-    videoId: v.id("videos"),
-    text: v.string(),
-    userName: v.string(),
-    timestampSeconds: v.number(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db.insert("comments", {
-      videoId: args.videoId,
-      userName: args.userName,
-      text: args.text,
-      timestampSeconds: args.timestampSeconds,
-      resolved: false,
-    });
-  },
-});
-
-export const getVideoForMigration = internalQuery({
-  args: { videoId: v.id("videos") },
-  handler: async (ctx, args): Promise<Doc<"videos"> | null> => {
-    return await ctx.db.get(args.videoId);
-  },
-});
-
-// ───────────────────────── v2: assets-aware migration ─────────────────────────
-// Same flow as the legacy createVideoStub/setVideoS3Key/etc. above, but writes
-// to the new `assets` table with assetKind + folderId. Used by the
-// /migration/v2/prepare + /migration/v2/complete HTTP routes.
+// Legacy createVideoStub / setVideoS3Key / setVideoMuxAsset / markVideoFailed /
+// addMigrationComment / getVideoForMigration were removed when the videos
+// table was retired in favor of assets. The /migration/v2/* endpoints
+// (createAssetStub etc. below) are the only path now.
 
 export const createAssetStub = internalMutation({
   args: {
