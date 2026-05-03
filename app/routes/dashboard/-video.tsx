@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
+import { AssetViewer } from "@/components/asset-viewer/AssetViewer";
 import { CommentList } from "@/components/comments/CommentList";
 import { CommentInput } from "@/components/comments/CommentInput";
 import { ShareDialog } from "@/components/ShareDialog";
@@ -393,7 +394,17 @@ export default function VideoPage() {
             </div>
           ) : null}
 
-          {activePlaybackUrl ? (
+          {video.assetKind && video.assetKind !== "video" ? (
+            <div className="flex-1 overflow-auto">
+              <AssetViewer
+                assetKind={video.assetKind}
+                title={video.title}
+                contentType={video.contentType}
+                fileSize={video.fileSize}
+                downloadUrl={originalPlaybackUrl ?? undefined}
+              />
+            </div>
+          ) : activePlaybackUrl ? (
             <VideoPlayer
               ref={playerRef}
               src={activePlaybackUrl}

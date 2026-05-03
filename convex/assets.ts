@@ -343,6 +343,44 @@ export const updateWorkflowStatus = mutation({
   },
 });
 
+/**
+ * Internal mutation that deletes the Convex row + cascades to comments,
+ * share links, and grants. Does NOT touch B2 or Mux — call the
+ * `assetActions.remove` action for that, which orchestrates external
+ * cleanup before invoking this.
+ */
+export const removeRow = internalMutation({
+  args: { assetId: v.id("assets") },
+  handler: async (ctx, args) => {
+    const comments = await ctx.db
+      .query("comments")
+      .withIndex("by_asset", (q) => q.eq("assetId", args.assetId))
+      .collect();
+    for (const comment of comments) {
+      await ctx.db.delete(comment._id);
+    }
+
+    const shareLinks = await ctx.db
+      .query("shareLinks")
+      .withIndex("by_asset", (q) => q.eq("assetId", args.assetId))
+      .collect();
+    for (const link of shareLinks) {
+      await deleteShareAccessGrantsForLink(ctx, link._id);
+      await ctx.db.delete(link._id);
+    }
+
+    await ctx.db.delete(args.assetId);
+  },
+});
+
+/**
+ * Public mutation kept for legacy callers that don't go through the
+ * action layer. Cleans up Convex state only — B2 object + Mux asset are
+ * leaked. Prefer `assetActions.remove` action.
+ *
+ * TODO-CLEANUP: once frontend is fully on the action, delete this and
+ * make removeRow the only mutation.
+ */
 export const remove = mutation({
   args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {

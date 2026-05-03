@@ -113,21 +113,21 @@ export async function getTeamStorageUsedBytes(
     .withIndex("by_team", (q) => q.eq("teamId", teamId))
     .collect();
 
-  const videosByProject = await Promise.all(
+  const assetsByProject = await Promise.all(
     projects.map((project) =>
       ctx.db
-        .query("videos")
+        .query("assets")
         .withIndex("by_project", (q) => q.eq("projectId", project._id))
         .collect(),
     ),
   );
 
   let total = 0;
-  for (const videos of videosByProject) {
-    for (const video of videos) {
-      if (video.status === "failed") continue;
-      if (typeof video.fileSize === "number" && Number.isFinite(video.fileSize)) {
-        total += video.fileSize;
+  for (const assets of assetsByProject) {
+    for (const asset of assets) {
+      if (asset.status === "failed") continue;
+      if (typeof asset.fileSize === "number" && Number.isFinite(asset.fileSize)) {
+        total += asset.fileSize;
       }
     }
   }

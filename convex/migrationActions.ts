@@ -101,14 +101,7 @@ export const completeMigrationAssetUpload = internalAction({
 
     let muxAssetId: string | null = null;
     try {
-      // createMuxAssetFromInputUrl accepts an Id<"videos"> typed param today;
-      // the Mux module will be migrated to assets in the frontend-rename
-      // session. For now we cast — the value is only used as a passthrough
-      // string for Mux passthrough metadata.
-      const muxAsset = await createMuxAssetFromInputUrl(
-        args.assetId as unknown as never,
-        ingestUrl,
-      );
+      const muxAsset = await createMuxAssetFromInputUrl(args.assetId, ingestUrl);
       muxAssetId = muxAsset.id ?? null;
       if (muxAssetId) {
         await ctx.runMutation(internal.migration.setAssetMuxAsset, {

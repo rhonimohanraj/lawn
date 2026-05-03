@@ -24,9 +24,12 @@ const MIGRATION_CLERK_ID = "migration:frameio";
 function parseTitle(title: string): { folderPath: string | null; cleanTitle: string } {
   const idx = title.lastIndexOf("/");
   if (idx <= 0) return { folderPath: null, cleanTitle: title };
+  const cleanTitle = title.slice(idx + 1);
+  // Trailing slash → empty leaf. Don't move the asset; leave as-is.
+  if (!cleanTitle) return { folderPath: null, cleanTitle: title };
   return {
     folderPath: title.slice(0, idx),
-    cleanTitle: title.slice(idx + 1),
+    cleanTitle,
   };
 }
 

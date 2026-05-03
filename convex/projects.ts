@@ -31,16 +31,16 @@ export const list = query({
       .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
       .collect();
 
-    // Get video counts for each project
+    // Get asset counts for each project
     const projectsWithCounts = await Promise.all(
       projects.map(async (project) => {
-        const videos = await ctx.db
-          .query("videos")
+        const assets = await ctx.db
+          .query("assets")
           .withIndex("by_project", (q) => q.eq("projectId", project._id))
           .collect();
         return {
           ...project,
-          videoCount: videos.length,
+          assetCount: assets.length,
         };
       })
     );
@@ -127,17 +127,17 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     await requireProjectAccess(ctx, args.projectId, "admin");
 
-    // Delete all videos in the project
-    const videos = await ctx.db
-      .query("videos")
+    // Delete all assets in the project
+    const assets = await ctx.db
+      .query("assets")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
-    for (const video of videos) {
+    for (const asset of assets) {
       // Delete comments
       const comments = await ctx.db
         .query("comments")
-        .withIndex("by_video", (q) => q.eq("videoId", video._id))
+        .withIndex("by_asset", (q) => q.eq("assetId", asset._id))
         .collect();
       for (const comment of comments) {
         await ctx.db.delete(comment._id);
@@ -146,7 +146,7 @@ export const remove = mutation({
       // Delete share links
       const shareLinks = await ctx.db
         .query("shareLinks")
-        .withIndex("by_video", (q) => q.eq("videoId", video._id))
+        .withIndex("by_asset", (q) => q.eq("assetId", asset._id))
         .collect();
       for (const link of shareLinks) {
         const grants = await ctx.db
@@ -159,7 +159,7 @@ export const remove = mutation({
         await ctx.db.delete(link._id);
       }
 
-      await ctx.db.delete(video._id);
+      await ctx.db.delete(asset._id);
     }
 
     await ctx.db.delete(args.projectId);

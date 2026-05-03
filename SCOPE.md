@@ -1,6 +1,16 @@
 # Frame: TEG ownership migration — scope tracker
 
-Status as of **2026-05-02 night** (full session). The deferred work has been picked up and completed in the same session.
+Status as of **2026-05-03 early morning** — review-driven follow-up commit.
+
+A first commit (`501d17e`) landed the rename + folder schema + viewer/folder primitives but a code review caught three Critical regressions and several Important issues. This commit (`HEAD`) addresses all of them. Specifically:
+
+- `projects.ts`, `teams.ts`, `billingHelpers.ts` were still querying the legacy `videos` table — would have silently disabled plan-storage limits and returned zero counts on project/team list pages once data migrated. Fixed: all three now query `assets`.
+- `<AssetViewer>`, `<FolderBreadcrumb>`, `<FolderGrid>`, `<NewFolderDialog>` existed but were never placed in routes. Fixed: AssetViewer wired into `-video.tsx`, `-watch.tsx`, `-share.tsx` with `assetKind` switching; folder UI wired into `-project.tsx` with `?folder=<id>` URL state for navigation.
+- `assets.remove` was Convex-only, leaking B2 objects + Mux assets. Fixed: new `assetActions.remove` action does B2 + Mux cleanup before calling the internal `removeRow` mutation.
+- `folders.ensurePath` could insert duplicate sibling folders under concurrent migration calls. Fixed: post-insert reconciliation collapses duplicates by keeping the lowest `_id`.
+- lawn-migrate state files from the pre-2026-05-03 runs had `lawnVideoId` only; would have re-prepped against v2 and created duplicate assets. Fixed: `loadState` now wipes legacy `lawnVideoId` on failed/pending rows so re-runs do a clean v2 handshake.
+- New `getSharedViewUrl` action lets shared non-video assets render in the iframe/viewer even when the share owner has disabled file downloads.
+- Minor: dead `as unknown as never` cast removed; `foldersBackfill` parser handles trailing-slash titles; comments parent error messages distinguish "not found" / "unmigrated" / "wrong asset".
 
 ---
 

@@ -41,7 +41,7 @@ type TeamProjectCardProps = {
   project: {
     _id: Id<"projects">;
     name: string;
-    videoCount: number;
+    assetCount: number;
   };
   canCreateProject: boolean;
   onOpen: () => void;
@@ -73,7 +73,7 @@ function TeamProjectCard({
         <div className="flex-1 min-w-0">
           <CardTitle className="text-base truncate">{project.name}</CardTitle>
           <CardDescription className="mt-1">
-            {project.videoCount} video{project.videoCount !== 1 ? "s" : ""}
+            {project.assetCount} asset{project.assetCount !== 1 ? "s" : ""}
           </CardDescription>
         </div>
         {canCreateProject && (

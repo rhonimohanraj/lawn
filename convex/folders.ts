@@ -239,6 +239,12 @@ export const ensurePath = internalMutation({
         }
       })();
 
+      // Race-safe sibling lookup: a stale snapshot might miss a folder that
+      // a concurrent ensurePath just inserted. Re-check after our own
+      // potential insert by doing the lookup, then on a duplicate-key-style
+      // insertion conflict, re-read once more. Convex doesn't expose
+      // unique-constraint enforcement, so we approximate it with read +
+      // optimistic insert + post-insert reconciliation.
       const existing = await ctx.db
         .query("folders")
         .withIndex("by_project_and_parent", (q) =>
@@ -252,12 +258,35 @@ export const ensurePath = internalMutation({
         continue;
       }
 
-      parentId = await ctx.db.insert("folders", {
+      const newId: Id<"folders"> = await ctx.db.insert("folders", {
         projectId: args.projectId,
         parentFolderId: parentId,
         name: sanitized,
         createdByClerkId: args.actorClerkId,
       });
+
+      // Post-insert reconciliation: if a concurrent transaction inserted
+      // the same name, collect siblings, keep the lowest _id, delete ours.
+      // (Lowest _id is deterministic — both racers converge on the same
+      // surviving row regardless of order.)
+      const siblings = await ctx.db
+        .query("folders")
+        .withIndex("by_project_and_parent", (q) =>
+          q.eq("projectId", args.projectId).eq("parentFolderId", parentId),
+        )
+        .filter((q) => q.eq(q.field("name"), sanitized))
+        .collect();
+      if (siblings.length > 1) {
+        const survivor = siblings.reduce((min, s) => (s._id < min._id ? s : min));
+        for (const s of siblings) {
+          if (s._id !== survivor._id) {
+            await ctx.db.delete(s._id);
+          }
+        }
+        parentId = survivor._id;
+      } else {
+        parentId = newId;
+      }
     }
     return parentId;
   },

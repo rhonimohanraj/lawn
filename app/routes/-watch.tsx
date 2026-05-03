@@ -4,6 +4,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useUser } from "@clerk/tanstack-react-start";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
+import { AssetViewer } from "@/components/asset-viewer/AssetViewer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,6 +86,30 @@ export default function WatchPage() {
     setIsDownloading(false);
     setDownloadError(null);
   }, [publicId]);
+
+  const [publicDownloadUrl, setPublicDownloadUrl] = useState<string | null>(null);
+  const isNonVideoAsset = Boolean(
+    videoData?.asset?.assetKind && videoData.asset.assetKind !== "video",
+  );
+  useEffect(() => {
+    if (!isNonVideoAsset) {
+      setPublicDownloadUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void getDownloadUrl({ publicId })
+      .then((res) => {
+        if (cancelled) return;
+        setPublicDownloadUrl(res.url);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPublicDownloadUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getDownloadUrl, publicId, isNonVideoAsset]);
 
   const flattenedComments = useMemo(() => {
     if (!comments) return [] as Array<{ _id: string; timestampSeconds: number; resolved: boolean }>;
@@ -249,7 +274,17 @@ export default function WatchPage() {
             </div>
           ) : null}
 
-          {playbackSession?.url ? (
+          {video.assetKind && video.assetKind !== "video" ? (
+            <div className="flex-1 overflow-auto">
+              <AssetViewer
+                assetKind={video.assetKind}
+                title={video.title}
+                contentType={video.contentType}
+                downloadUrl={publicDownloadUrl ?? undefined}
+                disallowDownload
+              />
+            </div>
+          ) : playbackSession?.url ? (
             <VideoPlayer
               ref={playerRef}
               src={playbackSession.url}

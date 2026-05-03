@@ -378,6 +378,85 @@ export const markUploadFailed = action({
   },
 });
 
+/**
+ * Full asset removal: deletes the B2 object, the Mux asset (for video kinds),
+ * and the Convex row + cascaded comments + share links + grants. Best-effort
+ * on the external resources — if B2 / Mux fail, we still drop the Convex
+ * row so the user's UI reflects the deletion. Failures are logged for manual
+ * cleanup.
+ */
+export const remove = action({
+  args: { assetId: v.id("assets") },
+  returns: v.object({
+    success: v.boolean(),
+    b2Deleted: v.boolean(),
+    muxDeleted: v.boolean(),
+  }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ success: boolean; b2Deleted: boolean; muxDeleted: boolean }> => {
+    // Use the asset query to enforce admin role + load metadata.
+    const asset = (await ctx.runQuery(api.assets.get, {
+      assetId: args.assetId,
+    })) as
+      | {
+          role?: string;
+          s3Key?: string;
+          muxAssetId?: string;
+          assetKind?: string;
+        }
+      | null;
+    if (!asset) {
+      throw new Error("Asset not found");
+    }
+    if (asset.role !== "owner" && asset.role !== "admin") {
+      throw new Error("Requires admin role or higher");
+    }
+
+    let b2Deleted = false;
+    if (asset.s3Key) {
+      try {
+        const s3 = getS3Client();
+        await s3.send(
+          new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: asset.s3Key,
+          }),
+        );
+        b2Deleted = true;
+      } catch (err) {
+        console.error("Failed to delete B2 object during asset removal", {
+          assetId: args.assetId,
+          s3Key: asset.s3Key,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    let muxDeleted = false;
+    if (asset.assetKind === "video" && asset.muxAssetId) {
+      try {
+        const { deleteMuxAsset } = await import("./mux");
+        await deleteMuxAsset(asset.muxAssetId);
+        muxDeleted = true;
+      } catch (err) {
+        console.error("Failed to delete Mux asset during asset removal", {
+          assetId: args.assetId,
+          muxAssetId: asset.muxAssetId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    await ctx.runMutation(internal.assets.removeRow, {
+      assetId: args.assetId,
+    });
+
+    return { success: true, b2Deleted, muxDeleted };
+  },
+});
+
 export const getPlaybackSession = action({
   args: { assetId: v.id("assets") },
   returns: v.object({
@@ -564,6 +643,40 @@ export const getPublicDownloadUrl = action({
       throw new Error("Original bucket file not found for this asset");
     }
 
+    return await buildDownloadResult(key, {
+      title: result.asset.title,
+      contentType: result.asset.contentType,
+    });
+  },
+});
+
+/**
+ * View URL for shared non-video assets. Same signed-URL builder as the
+ * download endpoint, but bypasses the allowDownload check — for renderable
+ * formats (image, PDF, audio) the page itself is the viewer, and we want
+ * those to display even when the share owner disabled file downloads.
+ */
+export const getSharedViewUrl = action({
+  args: { grantToken: v.string() },
+  returns: v.object({
+    url: v.string(),
+    filename: v.string(),
+  }),
+  handler: async (ctx, args): Promise<{ url: string; filename: string }> => {
+    const result = await ctx.runQuery(api.assets.getByShareGrantForDownload, {
+      grantToken: args.grantToken,
+    });
+
+    if (!result?.asset) {
+      throw new Error("Asset not found");
+    }
+    if (result.asset.status !== "ready") {
+      throw new Error(getDownloadUnavailableMessage(result.asset.status));
+    }
+    const key = getValueString(result.asset, "s3Key");
+    if (!key) {
+      throw new Error("Original bucket file not found for this asset");
+    }
     return await buildDownloadResult(key, {
       title: result.asset.title,
       contentType: result.asset.contentType,

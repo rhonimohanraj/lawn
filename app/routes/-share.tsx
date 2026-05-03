@@ -4,6 +4,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useUser } from "@clerk/tanstack-react-start";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
+import { AssetViewer } from "@/components/asset-viewer/AssetViewer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +25,7 @@ export default function SharePage() {
   const createComment = useMutation(api.comments.createForShareGrant);
   const getPlaybackSession = useAction(api.assetActions.getSharedPlaybackSession);
   const getDownloadUrl = useAction(api.assetActions.getSharedDownloadUrl);
+  const getViewUrl = useAction(api.assetActions.getSharedViewUrl);
 
   const [grantToken, setGrantToken] = useState<string | null>(null);
   const [hasAttemptedAutoGrant, setHasAttemptedAutoGrant] = useState(false);
@@ -70,6 +72,30 @@ export default function SharePage() {
     enabled: canTrackPresence,
     shareToken: token,
   });
+
+  const [sharedDownloadUrl, setSharedDownloadUrl] = useState<string | null>(null);
+  const isNonVideoAsset = Boolean(
+    videoData?.asset?.assetKind && videoData.asset.assetKind !== "video",
+  );
+  useEffect(() => {
+    if (!isNonVideoAsset || !grantToken) {
+      setSharedDownloadUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void getViewUrl({ grantToken })
+      .then((res) => {
+        if (cancelled) return;
+        setSharedDownloadUrl(res.url);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSharedDownloadUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getViewUrl, grantToken, isNonVideoAsset]);
 
   useEffect(() => {
     setGrantToken(null);
@@ -353,7 +379,15 @@ export default function SharePage() {
         </div>
 
         <div className="border-2 border-[#1a1a1a] overflow-hidden">
-          {playbackSession?.url ? (
+          {video.assetKind && video.assetKind !== "video" ? (
+            <AssetViewer
+              assetKind={video.assetKind}
+              title={video.title}
+              contentType={video.contentType}
+              downloadUrl={sharedDownloadUrl ?? undefined}
+              disallowDownload
+            />
+          ) : playbackSession?.url ? (
             <VideoPlayer
               ref={playerRef}
               src={playbackSession.url}

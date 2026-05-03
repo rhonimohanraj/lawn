@@ -87,8 +87,14 @@ export const create = mutation({
 
     if (args.parentId) {
       const parent = await ctx.db.get(args.parentId);
-      if (!parent || parent.assetId !== args.assetId) {
-        throw new Error("Invalid parent comment");
+      if (!parent) throw new Error("Parent comment not found.");
+      if (!parent.assetId) {
+        throw new Error(
+          "Cannot reply to an unmigrated comment — please reload after the data migration completes.",
+        );
+      }
+      if (parent.assetId !== args.assetId) {
+        throw new Error("Parent comment belongs to a different asset.");
       }
     }
 

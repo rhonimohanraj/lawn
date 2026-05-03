@@ -40,6 +40,11 @@ import { prewarmTeam } from "./-team.data";
 import { prewarmVideo } from "./-video.data";
 import { useDashboardUploadContext } from "@/lib/dashboardUploadContext";
 import { DashboardHeader } from "@/components/DashboardHeader";
+import { FolderBreadcrumb } from "@/components/folders/FolderBreadcrumb";
+import { FolderGrid } from "@/components/folders/FolderGrid";
+import { NewFolderDialog } from "@/components/folders/NewFolderDialog";
+import { FolderPlus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type ViewMode = "grid" | "list";
 type ShareToastState = {
@@ -130,8 +135,28 @@ export default function ProjectPage({
   const pathname = useLocation().pathname;
   const convex = useConvex();
 
-  const { context, resolvedProjectId, resolvedTeamSlug, project, videos } =
-    useProjectData({ teamSlug, projectId });
+  // Folder navigation: ?folder=<id> in the URL drives which folder is open.
+  // Default (no param) = project root. Stored in TanStack search.
+  const search = useLocation().search;
+  const folderId = (() => {
+    const params = new URLSearchParams(search);
+    const f = params.get("folder");
+    return f ? (f as Id<"folders">) : undefined;
+  })();
+  const navigateToFolder = useCallback(
+    (next?: Id<"folders">) => {
+      const params = new URLSearchParams(search);
+      if (next) params.set("folder", next);
+      else params.delete("folder");
+      const qs = params.toString();
+      navigate({ to: pathname + (qs ? `?${qs}` : ""), replace: false });
+    },
+    [navigate, pathname, search],
+  );
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+
+  const { context, resolvedProjectId, resolvedTeamSlug, project, videos, folders } =
+    useProjectData({ teamSlug, projectId, folderId });
   const projectPresenceCounts = useQuery(
     api.assetPresence.listProjectOnlineCounts,
     resolvedProjectId ? { projectId: resolvedProjectId } : "skip",
@@ -314,10 +339,51 @@ export default function ProjectPage({
             </button>
           </div>
           {canUpload && (
+            <Button
+              variant="ghost"
+              onClick={() => setNewFolderOpen(true)}
+              className="gap-2"
+              title="New folder"
+            >
+              <FolderPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">New folder</span>
+            </Button>
+          )}
+          {canUpload && (
             <UploadButton onFilesSelected={handleFilesSelected} />
           )}
         </div>
       </DashboardHeader>
+
+      {/* Folder breadcrumb + folder grid (visible whenever there's a project) */}
+      {project && (
+        <div className="flex-shrink-0 border-b border-[#1a1a1a]/10 px-6 py-3 bg-[#f0f0e8] flex items-center gap-3">
+          <FolderBreadcrumb
+            projectId={projectId}
+            projectName={project.name}
+            folderId={folderId}
+            onNavigate={navigateToFolder}
+            className="flex-1"
+          />
+        </div>
+      )}
+      {project && folders && folders.length > 0 && (
+        <div className="flex-shrink-0 px-6 py-4 border-b border-[#1a1a1a]/10">
+          <FolderGrid
+            projectId={projectId}
+            parentFolderId={folderId}
+            onOpen={navigateToFolder}
+          />
+        </div>
+      )}
+
+      <NewFolderDialog
+        open={newFolderOpen}
+        onOpenChange={setNewFolderOpen}
+        projectId={projectId}
+        parentFolderId={folderId}
+        onCreated={(id) => navigateToFolder(id)}
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
