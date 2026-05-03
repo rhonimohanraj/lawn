@@ -13,6 +13,8 @@ import type * as billing from "../billing.js";
 import type * as billingHelpers from "../billingHelpers.js";
 import type * as comments from "../comments.js";
 import type * as http from "../http.js";
+import type * as migration from "../migration.js";
+import type * as migrationActions from "../migrationActions.js";
 import type * as mux from "../mux.js";
 import type * as muxActions from "../muxActions.js";
 import type * as projects from "../projects.js";
@@ -38,6 +40,8 @@ declare const fullApi: ApiFromModules<{
   billingHelpers: typeof billingHelpers;
   comments: typeof comments;
   http: typeof http;
+  migration: typeof migration;
+  migrationActions: typeof migrationActions;
   mux: typeof mux;
   muxActions: typeof muxActions;
   projects: typeof projects;
