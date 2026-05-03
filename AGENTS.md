@@ -1,8 +1,8 @@
 ## Agent info
 
-Generally speaking, you should browse the codebase to figure out what is going on.
+This is TEG's `Frame` (originally Theo's `lawn`). Browse the codebase to understand the current state — we've diverged from upstream and will keep diverging.
 
-We have a few "philosophies" I want to make sure we honor throughout development:
+Philosophies inherited from Theo that we still honor:
 
 ### 1. Performance above all else
 

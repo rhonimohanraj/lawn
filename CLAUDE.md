@@ -1,6 +1,12 @@
-# lawn
+# Frame (TEG)
 
-Video review platform for creative teams. Built by Theo.
+Asset review platform for TEG creative teams. Originally forked from Theo's `lawn`, now TEG-owned and extended to handle every file type — video, image, audio, PDF, generic — with nested folders per project.
+
+**Repo conventions:**
+- Convex table is named `assets` (not `videos`); `assetKind` enum gates per-type behavior
+- Mux pipeline only runs when `assetKind === "video"`
+- Folders are first-class: `assets.folderId` + `folders.parentFolderId` give arbitrary nesting
+- We are not tracking upstream `pingdotgg/lawn` anymore — feel free to refactor anything
 
 ## Design Language
 
