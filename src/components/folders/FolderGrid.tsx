@@ -36,15 +36,15 @@ export function FolderGrid({
 
   if (viewMode === "list") {
     return (
-      <div className={cn("border-2 border-[#1a1a1a] divide-y divide-[#1a1a1a]/10 bg-[#f0f0e8]", className)}>
+      <div className={cn("border border-[#1a1a1a] rounded-md divide-y divide-[#1a1a1a]/10 bg-[#e8e8e0] overflow-hidden", className)}>
         {folders.map((folder) => (
           <button
             key={folder._id}
             onClick={() => onOpen(folder._id)}
-            className="w-full flex items-center gap-3 px-5 py-3 hover:bg-[#1a1a1a]/5 transition-colors text-left"
+            className="w-full flex items-center gap-3 px-5 py-3 hover:bg-[#d8d8d0] transition-colors text-left"
           >
-            <Folder className="h-5 w-5 shrink-0 text-[#1a1a1a]" />
-            <span className="font-bold truncate text-[#1a1a1a]">{folder.name}</span>
+            <Folder className="h-5 w-5 shrink-0 text-[#2d5a2d]" />
+            <span className="font-medium truncate text-[#1a1a1a]">{folder.name}</span>
           </button>
         ))}
       </div>
@@ -57,10 +57,12 @@ export function FolderGrid({
         <button
           key={folder._id}
           onClick={() => onOpen(folder._id)}
-          className="flex items-center gap-3 p-4 border-2 border-[#1a1a1a] bg-[#f0f0e8] hover:bg-[#1a1a1a] hover:text-[#f0f0e8] transition-colors text-left group"
+          className="flex items-center gap-3 p-4 border border-[#1a1a1a] rounded-md bg-[#e8e8e0] hover:bg-[#d8d8d0] transition-colors text-left text-[#1a1a1a]"
         >
-          <Folder className="h-6 w-6 shrink-0" />
-          <span className="font-bold truncate">{folder.name}</span>
+          <span className="inline-flex items-center justify-center h-9 w-9 rounded bg-[#f0f0e8] text-[#2d5a2d] shrink-0">
+            <Folder className="h-4 w-4" />
+          </span>
+          <span className="font-medium truncate">{folder.name}</span>
         </button>
       ))}
     </div>
