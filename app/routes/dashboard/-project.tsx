@@ -192,7 +192,13 @@ export default function ProjectPage({
     useProjectData({ teamSlug, projectId, folderId });
   const projectPresenceCounts = useQuery(
     api.assetPresence.listProjectOnlineCounts,
-    resolvedProjectId ? { projectId: resolvedProjectId } : "skip",
+    resolvedProjectId
+      ? {
+          projectId: resolvedProjectId,
+          folderId,
+          scope: "folder",
+        }
+      : "skip",
   );
   const { requestUpload, uploads } =
     useDashboardUploadContext();

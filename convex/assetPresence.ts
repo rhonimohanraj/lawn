@@ -199,20 +199,35 @@ export const disconnect = mutation({
   },
 });
 
+/**
+ * Originally this query iterated every asset in the project and called
+ * `presence.listRoom` for each — fine for small projects, but blew up on
+ * the 1,800-asset 00 Three Point Studios project with a Convex compute-time
+ * timeout (10s limit, ~1800 component queries × N ms each). The timeout is
+ * killed at the system level, so JS try/catch can't recover; the React
+ * error boundary then replaces the entire dashboard with a generic error.
+ *
+ * Fix: scope the presence count to the assets actually visible on the page
+ * — the current folder only — by accepting an optional folderId. The
+ * frontend already only uses counts for the current folder's videos, so
+ * scoping the query to match is the right shape.
+ *
+ * The legacy unscoped call (no folderId arg) returns empty counts — the
+ * "N watching" badge is cosmetic and never worth blowing up the page over.
+ */
 export const listProjectOnlineCounts = query({
   args: {
     projectId: v.id("projects"),
+    /** Restricts the count to assets directly in this folder (or the
+     *  project root if undefined). When omitted entirely, returns
+     *  empty counts to avoid timing out on large projects. */
+    folderId: v.optional(v.id("folders")),
+    scope: v.optional(v.union(v.literal("folder"), v.literal("project"))),
   },
   returns: v.object({
     counts: v.record(v.string(), v.number()),
   }),
   handler: async (ctx, args) => {
-    // This query is PURELY COSMETIC — it powers the "N watching" badge.
-    // The dashboard must not be replaceable by an error page just because
-    // one presence room misbehaves. So we wrap the entire handler in a
-    // catch and return empty counts on any failure (auth refresh, presence
-    // component blip, validator quirk after a cross-project move, etc.).
-    // Real auth is enforced by the page's project queries elsewhere.
     try {
       try {
         await requireProjectAccess(ctx, args.projectId, "viewer");
@@ -220,15 +235,28 @@ export const listProjectOnlineCounts = query({
         return { counts: {} };
       }
 
+      const scope = args.scope ?? "folder";
+      // No folder scope provided + project-wide scope = legacy call shape.
+      // Skip the work — see comment above the query.
+      if (scope === "project" && args.folderId === undefined) {
+        return { counts: {} };
+      }
+
       const assets = await ctx.db
         .query("assets")
-        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .withIndex("by_project_and_folder", (q) =>
+          q.eq("projectId", args.projectId).eq("folderId", args.folderId),
+        )
         .collect();
 
-      const counts: Record<string, number> = {};
+      // Cap the parallelism at a sensible bound. Even on a folder, we
+      // shouldn't run unbounded `presence.listRoom` calls.
+      const MAX = 100;
+      const slice = assets.slice(0, MAX);
 
+      const counts: Record<string, number> = {};
       await Promise.all(
-        assets.map(async (asset) => {
+        slice.map(async (asset) => {
           try {
             const onlineUsers = await presence.listRoom(
               ctx,
