@@ -59,6 +59,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { FolderBreadcrumb } from "@/components/folders/FolderBreadcrumb";
 import { FolderGrid } from "@/components/folders/FolderGrid";
 import { NewFolderDialog } from "@/components/folders/NewFolderDialog";
+import { MoveFolderDialog } from "@/components/folders/MoveFolderDialog";
 import { FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -232,6 +233,11 @@ export default function ProjectPage({
   const [shareToast, setShareToast] = useState<ShareToastState | null>(null);
   const shareToastTimeoutRef = useRef<number | null>(null);
   const [gridSort, setGridSort] = useState<AssetSortKey>("name");
+
+  const [pendingMove, setPendingMove] = useState<{
+    _id: Id<"folders">;
+    name: string;
+  } | null>(null);
 
   const shouldCanonicalize =
     !!context && !context.isCanonical && pathname !== context.canonicalPath;
@@ -458,6 +464,7 @@ export default function ProjectPage({
             onOpen={navigateToFolder}
             viewMode="grid"
             sortKey={gridSort}
+            onRequestMove={canUpload ? (f) => setPendingMove(f) : undefined}
           />
         </div>
       )}
@@ -468,6 +475,21 @@ export default function ProjectPage({
         projectId={projectId}
         parentFolderId={folderId}
         onCreated={(id) => navigateToFolder(id)}
+      />
+
+      <MoveFolderDialog
+        open={pendingMove !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingMove(null);
+        }}
+        folderId={pendingMove?._id ?? null}
+        folderName={pendingMove?.name ?? null}
+        teamId={project?.teamId ?? null}
+        currentProjectId={projectId}
+        currentParentFolderId={folderId ?? null}
+        onMoved={(info) => {
+          showShareToast("success", `Moved to ${info.targetLabel.split(" / ").slice(-1)[0]}`);
+        }}
       />
 
       {/* Content */}

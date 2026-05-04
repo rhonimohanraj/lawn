@@ -135,18 +135,101 @@ export const rename = mutation({
   },
 });
 
+/**
+ * Walk a folder subtree and rewrite each node's projectId. Used by
+ * `move` when relocating across projects. The asset rows under each
+ * folder also get rewritten so they stay scoped to their owning project.
+ */
+async function rewriteSubtreeProjectId(
+  ctx: MutationCtx,
+  rootFolderId: Id<"folders">,
+  targetProjectId: Id<"projects">,
+) {
+  const queue: Id<"folders">[] = [rootFolderId];
+
+  while (queue.length > 0) {
+    const folderId = queue.shift()!;
+    const f = await ctx.db.get(folderId);
+    if (!f) continue;
+
+    if (f.projectId !== targetProjectId) {
+      await ctx.db.patch(folderId, { projectId: targetProjectId });
+    }
+
+    const children = await ctx.db
+      .query("folders")
+      .withIndex("by_parent", (q) => q.eq("parentFolderId", folderId))
+      .collect();
+    for (const c of children) queue.push(c._id);
+
+    const assetsInFolder = await ctx.db
+      .query("assets")
+      .withIndex("by_folder", (q) => q.eq("folderId", folderId))
+      .collect();
+    for (const a of assetsInFolder) {
+      if (a.projectId !== targetProjectId) {
+        await ctx.db.patch(a._id, { projectId: targetProjectId });
+      }
+    }
+  }
+}
+
+/**
+ * Move a folder to a new parent — within the same project, or across to
+ * a different project entirely.
+ *
+ * - Within same project: pass `newParentFolderId` only. Rejects cycles
+ *   and depth-limit violations. Existing intra-project move semantics.
+ * - Cross-project: pass `targetProjectId`. The folder + every descendant
+ *   folder + every contained asset has its `projectId` rewritten. The
+ *   target's tree is depth-checked end-to-end.
+ *
+ * Auth: caller needs member access on the source folder. Cross-project
+ * moves additionally require member access on the target project.
+ *
+ * Reversibility: every move is just a normal mutation, so users always
+ * "undo" by moving the folder back to its original location. No special
+ * undo state — the move is symmetric.
+ */
 export const move = mutation({
   args: {
     folderId: v.id("folders"),
     newParentFolderId: v.optional(v.id("folders")),
+    /** Optional. When set and different from the folder's current
+     *  project, performs a cross-project move (rewrites projectId on
+     *  the entire subtree). When unset, falls back to the source
+     *  folder's project. */
+    targetProjectId: v.optional(v.id("projects")),
   },
   handler: async (ctx, args) => {
     const { folder } = await requireFolderAccess(ctx, args.folderId, "member");
-    if (folder.parentFolderId === args.newParentFolderId) return;
 
-    await assertParentBelongsToProject(ctx, folder.projectId, args.newParentFolderId);
+    const targetProjectId = args.targetProjectId ?? folder.projectId;
+    const isCrossProject = targetProjectId !== folder.projectId;
 
-    // Reject moving a folder into itself or a descendant.
+    if (isCrossProject) {
+      await requireProjectAccess(ctx, targetProjectId, "member");
+    }
+
+    // No-op short-circuit (same project + same parent).
+    if (
+      !isCrossProject &&
+      folder.parentFolderId === args.newParentFolderId
+    ) {
+      return;
+    }
+
+    // Validate the new parent (when provided) belongs to the target project.
+    if (args.newParentFolderId) {
+      const parent = await ctx.db.get(args.newParentFolderId);
+      if (!parent) throw new Error("Parent folder not found.");
+      if (parent.projectId !== targetProjectId) {
+        throw new Error("Parent folder belongs to a different project.");
+      }
+    }
+
+    // Cycle check: traverse upward from the prospective new parent. If we
+    // ever hit folderId, the move would create a cycle.
     let cursor = args.newParentFolderId;
     while (cursor) {
       if (cursor === args.folderId) {
@@ -156,13 +239,54 @@ export const move = mutation({
       cursor = node?.parentFolderId;
     }
 
+    // Depth check on the destination side. We add 1 because the folder
+    // itself sits one level below the new parent.
     const newDepth = (await depthOf(ctx, args.newParentFolderId)) + 1;
     if (newDepth > MAX_DEPTH) {
       throw new Error("Folder depth limit exceeded.");
     }
 
-    await bumpForFolderMove(ctx, folder, args.newParentFolderId);
-    await ctx.db.patch(args.folderId, { parentFolderId: args.newParentFolderId });
+    // Sibling-name conflict at the destination — keep breadcrumbs unambiguous.
+    const siblings = await ctx.db
+      .query("folders")
+      .withIndex("by_project_and_parent", (q) =>
+        q
+          .eq("projectId", targetProjectId)
+          .eq("parentFolderId", args.newParentFolderId),
+      )
+      .collect();
+    if (
+      siblings.some((s) => s._id !== folder._id && s.name === folder.name)
+    ) {
+      throw new Error(
+        `A folder named "${folder.name}" already exists at the destination.`,
+      );
+    }
+
+    // Apply size/timestamp propagation on the OLD chain (still in the old
+    // project) before any patch. Same for the NEW chain after we've
+    // re-pointed projectId. The activity helper handles intra-project
+    // chains; cross-project we do it manually.
+    if (isCrossProject) {
+      // Update the folder's own record first so subsequent chain walks
+      // start from the right place.
+      await ctx.db.patch(args.folderId, {
+        projectId: targetProjectId,
+        parentFolderId: args.newParentFolderId,
+      });
+      // Rewrite the rest of the subtree.
+      await rewriteSubtreeProjectId(ctx, args.folderId, targetProjectId);
+      // Touch source + target folder chains so sizes recompute on next
+      // backfill. We don't manually delta-shift sizes here because the
+      // total volume (folder + descendants) is non-trivial to compute
+      // correctly under contention; activityBackfill will reconcile.
+      await touchFolder(ctx, folder); // bumps lastModifiedAt on source proj
+    } else {
+      await bumpForFolderMove(ctx, folder, args.newParentFolderId);
+      await ctx.db.patch(args.folderId, {
+        parentFolderId: args.newParentFolderId,
+      });
+    }
   },
 });
 
@@ -220,6 +344,94 @@ export const list = query({
       ...folder,
       createdByName: nameByClerkId.get(folder.createdByClerkId) ?? "Unknown",
     }));
+  },
+});
+
+/**
+ * Flat list of every project + folder visible to the caller within a team,
+ * each tagged with the path that leads to it. Powers the "Move to…" picker:
+ * one query, no per-project round-trips, easy to render in a searchable list.
+ *
+ * Excludes the moving folder itself + every descendant of it (to keep the
+ * caller from creating a cycle by picking an invalid target).
+ */
+export const listMoveDestinations = query({
+  args: {
+    teamId: v.id("teams"),
+    /** Folder being moved — used to filter itself + its descendants
+     *  out of the destination list. Optional so the same query can
+     *  power non-move pickers later. */
+    excludeFolderId: v.optional(v.id("folders")),
+  },
+  handler: async (ctx, args) => {
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    const projectIds = new Set(projects.map((p) => p._id as string));
+
+    const allFolders = await ctx.db.query("folders").collect();
+    const teamFolders = allFolders.filter((f) =>
+      projectIds.has(f.projectId as string),
+    );
+
+    // Build descendant set if we're excluding a moving folder.
+    const excluded = new Set<string>();
+    if (args.excludeFolderId) {
+      excluded.add(args.excludeFolderId as string);
+      // BFS down through parentFolderId. Bounded by total folder count.
+      const childrenByParent = new Map<string, Doc<"folders">[]>();
+      for (const f of teamFolders) {
+        const parent = (f.parentFolderId as string | undefined) ?? "__root__";
+        const arr = childrenByParent.get(parent) ?? [];
+        arr.push(f);
+        childrenByParent.set(parent, arr);
+      }
+      const queue: string[] = [args.excludeFolderId as string];
+      while (queue.length) {
+        const id = queue.shift()!;
+        const kids = childrenByParent.get(id) ?? [];
+        for (const k of kids) {
+          excluded.add(k._id as string);
+          queue.push(k._id as string);
+        }
+      }
+    }
+
+    // Build folder paths once. Walk up using parentFolderId, accumulating
+    // names. Bounded by depth (32).
+    const foldersById = new Map(teamFolders.map((f) => [f._id as string, f]));
+    function pathFor(folder: Doc<"folders">): string[] {
+      const segs: string[] = [];
+      let cursor: Id<"folders"> | undefined = folder._id;
+      let steps = 0;
+      while (cursor && steps++ < 64) {
+        const f = foldersById.get(cursor as string);
+        if (!f) break;
+        segs.unshift(f.name);
+        cursor = f.parentFolderId;
+      }
+      return segs;
+    }
+
+    const projectsById = new Map(projects.map((p) => [p._id as string, p]));
+
+    return {
+      projects: projects.map((p) => ({
+        _id: p._id,
+        name: p.name,
+      })),
+      folders: teamFolders
+        .filter((f) => !excluded.has(f._id as string))
+        .map((f) => ({
+          _id: f._id,
+          name: f.name,
+          projectId: f.projectId,
+          projectName: projectsById.get(f.projectId as string)?.name ?? "?",
+          parentFolderId: f.parentFolderId,
+          path: pathFor(f),
+        })),
+    };
   },
 });
 

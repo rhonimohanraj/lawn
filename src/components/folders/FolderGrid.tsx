@@ -3,8 +3,14 @@
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Id } from "@convex/_generated/dataModel";
-import { Folder } from "lucide-react";
+import { Folder, MoreVertical, FolderInput } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface FolderGridProps {
   projectId: Id<"projects">;
@@ -15,6 +21,8 @@ interface FolderGridProps {
   /** Sort key — kept aligned with the parent's asset grid so folders +
    *  assets read in the same order. Falls back to alphabetical. */
   sortKey?: "name" | "size" | "modified" | "uploaded" | "comments";
+  /** When provided, shows a kebab on each folder with "Move to…". */
+  onRequestMove?: (folder: { _id: Id<"folders">; name: string }) => void;
   className?: string;
 }
 
@@ -29,6 +37,7 @@ export function FolderGrid({
   onOpen,
   viewMode = "grid",
   sortKey = "name",
+  onRequestMove,
   className,
 }: FolderGridProps) {
   const foldersRaw = useQuery(api.folders.list, {
@@ -81,16 +90,43 @@ export function FolderGrid({
   return (
     <div className={cn("grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3", className)}>
       {folders.map((folder) => (
-        <button
+        <div
           key={folder._id}
-          onClick={() => onOpen(folder._id)}
-          className="flex items-center gap-3 p-4 border border-[#1a1a1a] rounded-md bg-[#e8e8e0] hover:bg-[#d8d8d0] transition-colors text-left text-[#1a1a1a]"
+          className="group relative flex items-center gap-3 p-4 border border-[#1a1a1a] rounded-md bg-[#e8e8e0] hover:bg-[#d8d8d0] transition-colors text-[#1a1a1a]"
         >
-          <span className="inline-flex items-center justify-center h-9 w-9 rounded bg-[#f0f0e8] text-[#2d5a2d] shrink-0">
-            <Folder className="h-4 w-4" />
-          </span>
-          <span className="font-medium truncate">{folder.name}</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => onOpen(folder._id)}
+            className="flex items-center gap-3 text-left flex-1 min-w-0"
+          >
+            <span className="inline-flex items-center justify-center h-9 w-9 rounded bg-[#f0f0e8] text-[#2d5a2d] shrink-0">
+              <Folder className="h-4 w-4" />
+            </span>
+            <span className="font-medium truncate">{folder.name}</span>
+          </button>
+          {onRequestMove && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex h-7 w-7 items-center justify-center rounded text-[#888] hover:text-[#1a1a1a] hover:bg-[#f0f0e8]"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Folder actions"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => onRequestMove({ _id: folder._id, name: folder.name })}
+                >
+                  <FolderInput className="mr-2 h-4 w-4" />
+                  Move to…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       ))}
     </div>
   );
