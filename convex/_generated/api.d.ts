@@ -13,6 +13,8 @@ import type * as activityBackfill from "../activityBackfill.js";
 import type * as assetActions from "../assetActions.js";
 import type * as assetKind from "../assetKind.js";
 import type * as assetPresence from "../assetPresence.js";
+import type * as assetRecovery from "../assetRecovery.js";
+import type * as assetRecoveryHelpers from "../assetRecoveryHelpers.js";
 import type * as assets from "../assets.js";
 import type * as assetsMigration from "../assetsMigration.js";
 import type * as auth from "../auth.js";
@@ -50,6 +52,8 @@ declare const fullApi: ApiFromModules<{
   assetActions: typeof assetActions;
   assetKind: typeof assetKind;
   assetPresence: typeof assetPresence;
+  assetRecovery: typeof assetRecovery;
+  assetRecoveryHelpers: typeof assetRecoveryHelpers;
   assets: typeof assets;
   assetsMigration: typeof assetsMigration;
   auth: typeof auth;

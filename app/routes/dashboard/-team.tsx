@@ -232,6 +232,18 @@ export default function TeamPage() {
     _id: Id<"projects">;
     name: string;
   } | null>(null);
+
+  // Typed-confirmation delete. The user picks Delete from the kebab and
+  // we require them to retype the project name before the mutation
+  // fires — guards against accidental cascade deletes.
+  const [pendingDelete, setPendingDelete] = useState<{
+    _id: Id<"projects">;
+    name: string;
+    assetCount: number;
+  } | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [shareToast, setShareToast] = useState<string | null>(null);
   const shareToastTimeoutRef = useRef<number | null>(null);
 
@@ -298,14 +310,43 @@ export default function TeamPage() {
     }
   };
 
-  const handleDeleteProject = async (projectId: Id<"projects">) => {
-    if (!confirm("Are you sure you want to delete this project?")) return;
-    try {
-      await deleteProject({ projectId });
-    } catch (error) {
-      console.error("Failed to delete project:", error);
-    }
+  const handleDeleteProject = (projectId: Id<"projects">) => {
+    const project = projects?.find((p) => p._id === projectId);
+    if (!project) return;
+    setDeleteConfirmName("");
+    setDeleteError(null);
+    setPendingDelete({
+      _id: project._id,
+      name: project.name,
+      assetCount: project.assetCount,
+    });
   };
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    if (deleteConfirmName.trim() !== pendingDelete.name) {
+      setDeleteError(
+        `Type "${pendingDelete.name}" exactly to confirm deletion.`,
+      );
+      return;
+    }
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteProject({
+        projectId: pendingDelete._id,
+        confirmName: deleteConfirmName.trim(),
+      });
+      setPendingDelete(null);
+      showShareToast(`Deleted ${pendingDelete.name}`);
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error ? error.message : "Failed to delete project",
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteProject, deleteConfirmName, pendingDelete, showShareToast]);
 
   const handleShareProject = useCallback(
     async (projectId: Id<"projects">) => {
@@ -725,6 +766,73 @@ export default function TeamPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNestPickerSource(null)}>
               Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Typed-confirmation delete. The cascade nukes every asset,
+          comment, and share link in the project — way too destructive
+          for a one-tap action. User must retype the project name. */}
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setPendingDelete(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete {pendingDelete?.name}?</DialogTitle>
+            <DialogDescription className="leading-relaxed">
+              This permanently removes the project and{" "}
+              <strong>
+                {pendingDelete?.assetCount ?? 0} asset
+                {pendingDelete?.assetCount === 1 ? "" : "s"}
+              </strong>
+              {" "}inside, plus every comment, share link, and grant tied to
+              them. The B2 / Mux media stays in storage — recovery is
+              possible but tedious. Type{" "}
+              <strong className="font-mono">{pendingDelete?.name}</strong>{" "}
+              below to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label
+              htmlFor="delete-confirm-name"
+              className="text-xs font-mono uppercase tracking-wider text-[#888]"
+            >
+              Project name
+            </label>
+            <Input
+              id="delete-confirm-name"
+              value={deleteConfirmName}
+              onChange={(e) => {
+                setDeleteConfirmName(e.target.value);
+                if (deleteError) setDeleteError(null);
+              }}
+              placeholder={pendingDelete?.name ?? ""}
+              autoFocus
+            />
+          </div>
+          {deleteError && <p className="text-sm text-[#dc2626]">{deleteError}</p>}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingDelete(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleConfirmDelete()}
+              disabled={
+                isDeleting ||
+                deleteConfirmName.trim() !== pendingDelete?.name
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+              {isDeleting ? "Deleting…" : "Delete project"}
             </Button>
           </DialogFooter>
         </DialogContent>

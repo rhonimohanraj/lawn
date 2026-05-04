@@ -123,10 +123,33 @@ export const update = mutation({
   },
 });
 
+/**
+ * Hard-delete a project + every asset, comment, share link, and grant
+ * inside it. Required name confirmation: `confirmName` must equal the
+ * project's current name. Without it, the mutation refuses to fire.
+ *
+ * Rationale: an accidental click on the kebab Delete used to wipe
+ * 1,000+ assets in one shot. Forcing the user to type (or echo) the
+ * project name makes the action proportional to its blast radius.
+ *
+ * The B2 / Mux media is intentionally NOT deleted here — the
+ * `assetRecovery` action can reconstruct asset rows from B2 if a
+ * deletion was an accident.
+ */
 export const remove = mutation({
-  args: { projectId: v.id("projects") },
+  args: {
+    projectId: v.id("projects"),
+    /** Must equal the project's current name. */
+    confirmName: v.string(),
+  },
   handler: async (ctx, args) => {
-    await requireProjectAccess(ctx, args.projectId, "admin");
+    const { project } = await requireProjectAccess(ctx, args.projectId, "admin");
+
+    if (args.confirmName.trim() !== project.name) {
+      throw new Error(
+        `Confirmation name "${args.confirmName}" does not match "${project.name}". Refusing to delete.`,
+      );
+    }
 
     // Delete all assets in the project
     const assets = await ctx.db
