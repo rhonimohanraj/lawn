@@ -33,6 +33,7 @@ import type * as mux from "../mux.js";
 import type * as muxActions from "../muxActions.js";
 import type * as projectActions from "../projectActions.js";
 import type * as projects from "../projects.js";
+import type * as reorgFromTitlePaths from "../reorgFromTitlePaths.js";
 import type * as restructureFrameio from "../restructureFrameio.js";
 import type * as s3 from "../s3.js";
 import type * as security from "../security.js";
@@ -74,6 +75,7 @@ declare const fullApi: ApiFromModules<{
   muxActions: typeof muxActions;
   projectActions: typeof projectActions;
   projects: typeof projects;
+  reorgFromTitlePaths: typeof reorgFromTitlePaths;
   restructureFrameio: typeof restructureFrameio;
   s3: typeof s3;
   security: typeof security;
