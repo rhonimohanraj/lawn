@@ -14,12 +14,12 @@ import {
   MoreVertical,
   Trash2,
   Link as LinkIcon,
-  Grid3X3,
-  LayoutList,
   Download,
   MessageSquare,
   Eye,
 } from "lucide-react";
+import { ViewModeToggle, type ViewMode } from "@/components/ViewModeToggle";
+import { AssetTable, type AssetTableAsset } from "@/components/AssetTable";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,11 +46,27 @@ import { NewFolderDialog } from "@/components/folders/NewFolderDialog";
 import { FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type ViewMode = "grid" | "list";
 type ShareToastState = {
   tone: "success" | "error";
   message: string;
 };
+
+const VIEW_MODE_STORAGE_PREFIX = "frame:viewMode:";
+
+function viewModeStorageKey(projectId: string, folderId: string | undefined) {
+  return `${VIEW_MODE_STORAGE_PREFIX}${projectId}:${folderId ?? "root"}`;
+}
+
+function readStoredViewMode(key: string): ViewMode | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === "grid" || raw === "table") return raw;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 async function copyTextToClipboard(text: string) {
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
@@ -166,8 +182,37 @@ export default function ProjectPage({
   const deleteVideo = useMutation(api.assets.remove);
   const updateVideoWorkflowStatus = useMutation(api.assets.updateWorkflowStatus);
   const getDownloadUrl = useAction(api.assetActions.getDownloadUrl);
+  const createFolderShare = useMutation(api.shareLinks.createForFolder);
+  const createProjectShare = useMutation(api.shareLinks.createForProject);
 
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  // View mode persists per-folder so switching context restores the user's
+  // last choice for that location (Frame.io and Linear both do this).
+  const viewModeKey = viewModeStorageKey(projectId, folderId);
+  const [viewMode, setViewModeState] = useState<ViewMode>(
+    () => readStoredViewMode(viewModeKey) ?? "grid",
+  );
+  const setViewMode = useCallback(
+    (mode: ViewMode) => {
+      setViewModeState(mode);
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(viewModeKey, mode);
+        } catch {
+          /* ignore quota / disabled storage */
+        }
+      }
+    },
+    [viewModeKey],
+  );
+
+  // Restore stored choice when navigating between folders (key changes).
+  useEffect(() => {
+    const stored = readStoredViewMode(viewModeKey);
+    if (stored) {
+      setViewModeState(stored);
+    }
+  }, [viewModeKey]);
+
   const [shareToast, setShareToast] = useState<ShareToastState | null>(null);
   const shareToastTimeoutRef = useRef<number | null>(null);
 
@@ -251,6 +296,28 @@ export default function ProjectPage({
     }, 2400);
   }, []);
 
+  const handleShareScope = useCallback(async () => {
+    try {
+      const result = folderId
+        ? await createFolderShare({ folderId, allowDownload: false })
+        : await createProjectShare({ projectId, allowDownload: false });
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const url = `${origin}/share/${result.token}`;
+      const copied = await copyTextToClipboard(url);
+      if (copied) {
+        showShareToast(
+          "success",
+          folderId ? "Folder share link copied" : "Project share link copied",
+        );
+      } else {
+        showShareToast("error", "Could not copy link");
+      }
+    } catch (error) {
+      console.error("Failed to create scoped share:", error);
+      showShareToast("error", "Could not create share link");
+    }
+  }, [createFolderShare, createProjectShare, folderId, projectId, showShareToast]);
+
   const handleShareVideo = useCallback(
     async (video: {
       _id: Id<"assets">;
@@ -313,31 +380,20 @@ export default function ProjectPage({
           "flex items-center gap-2 transition-opacity duration-300 flex-shrink-0",
           isLoadingData ? "opacity-0" : "opacity-100"
         )}>
-          {/* View toggle */}
-          <div className="flex items-center border-2 border-[#1a1a1a] p-0.5">
-            <button
-              onClick={() => setViewMode("grid")}
-              className={cn(
-                "p-1.5 transition-colors",
-                viewMode === "grid"
-                  ? "bg-[#1a1a1a] text-[#f0f0e8]"
-                  : "text-[#888] hover:text-[#1a1a1a]",
-              )}
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          {canUpload && (
+            <Button
+              variant="outline"
+              onClick={() => void handleShareScope()}
+              className="gap-2"
+              title={folderId ? "Share folder" : "Share project"}
             >
-              <Grid3X3 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setViewMode("list")}
-              className={cn(
-                "p-1.5 transition-colors",
-                viewMode === "list"
-                  ? "bg-[#1a1a1a] text-[#f0f0e8]"
-                  : "text-[#888] hover:text-[#1a1a1a]",
-              )}
-            >
-              <LayoutList className="h-4 w-4" />
-            </button>
-          </div>
+              <LinkIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {folderId ? "Share folder" : "Share project"}
+              </span>
+            </Button>
+          )}
           {canUpload && (
             <Button
               variant="ghost"
@@ -367,13 +423,15 @@ export default function ProjectPage({
           />
         </div>
       )}
-      {project && folders && folders.length > 0 && (
+      {/* Folder grid renders separately above the asset grid. In table mode
+          folders are rendered inline by AssetTable, so we suppress this row. */}
+      {project && folders && folders.length > 0 && viewMode === "grid" && (
         <div className="flex-shrink-0 px-6 py-4 border-b border-[#1a1a1a]/10">
           <FolderGrid
             projectId={projectId}
             parentFolderId={folderId}
             onOpen={navigateToFolder}
-            viewMode={viewMode}
+            viewMode="grid"
           />
         </div>
       )}
@@ -541,106 +599,31 @@ export default function ProjectPage({
             </div>
           </div>
         ) : (
-          /* List View - Horizontal rows */
-          <div className={cn(
-            "divide-y-2 divide-[#1a1a1a] transition-opacity duration-300",
-            isLoadingData ? "opacity-0" : "opacity-100"
-          )}>
-            {videos?.map((video) => {
-              const thumbnailSrc = video.thumbnailUrl?.startsWith("http")
-                ? video.thumbnailUrl
-                : undefined;
-              const canDownload = Boolean(video.s3Key) && video.status !== "failed" && video.status !== "uploading";
-              const watchingCount =
-                projectPresenceCounts?.counts?.[video._id] ?? 0;
-
-              return (
-                <VideoIntentTarget
-                  key={video._id}
-                  className="group flex items-center gap-5 px-6 py-3 hover:bg-[#e8e8e0] cursor-pointer transition-colors"
-                  teamSlug={resolvedTeamSlug}
-                  projectId={project._id}
-                  assetId={video._id}
-                  muxPlaybackId={video.muxPlaybackId}
-                  onOpen={() =>
-                    navigate({
-                      to: videoPath(resolvedTeamSlug, project._id, video._id),
-                    })
-                  }
-                >
-                  {/* Thumbnail */}
-                  <div className="relative w-44 aspect-video bg-[#e8e8e0] overflow-hidden border-2 border-[#1a1a1a] shrink-0 shadow-[4px_4px_0px_0px_var(--shadow-color)] group-hover:translate-y-[2px] group-hover:translate-x-[2px] group-hover:shadow-[2px_2px_0px_0px_var(--shadow-color)] transition-all">
-                    {thumbnailSrc ? (
-                      <img
-                        src={thumbnailSrc}
-                        alt={video.title}
-                        className="object-cover w-full h-full"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Play className="h-6 w-6 text-[#888]" />
-                      </div>
-                    )}
-                    {video.status !== "ready" && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <span className="text-white text-[10px] font-bold uppercase tracking-wider">
-                          {video.status === "uploading" && "Uploading..."}
-                          {video.status === "processing" && "Processing..."}
-                          {video.status === "failed" && "Failed"}
-                        </span>
-                      </div>
-                    )}
-                    {video.status === "ready" && video.duration && (
-                      <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 py-0.5">
-                        {formatDuration(video.duration)}
-                      </div>
-                    )}
-                  </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-black text-[#1a1a1a] truncate">
-                    {video.title}
-                  </p>
-                  <div className="flex items-center gap-3 mt-1">
-                    <VideoWorkflowStatusControl
-                      status={video.workflowStatus}
-                      stopPropagation
-                      disabled={!canUpload}
-                      onChange={(workflowStatus) =>
-                        void handleUpdateWorkflowStatus(video._id, workflowStatus)
-                      }
-                    />
-                    {video.commentCount > 0 && (
-                      <span className="inline-flex items-center gap-1 text-xs text-[#888]">
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        {video.commentCount}
-                      </span>
-                    )}
-                    {watchingCount > 0 && (
-                      <span className="inline-flex items-center gap-1 text-xs text-[#1a1a1a]">
-                        <Eye className="h-3.5 w-3.5" />
-                        {watchingCount}
-                      </span>
-                    )}
-                    <span className="text-xs text-[#888] font-mono">
-                      {formatRelativeTime(video._creationTime)}
-                    </span>
-                    {video.uploaderName && (
-                      <span className="text-xs text-[#888]">
-                        {video.uploaderName}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+          /* Table view — folders + assets in one sortable list. */
+          <div
+            className={cn(
+              "p-6 transition-opacity duration-300",
+              isLoadingData ? "opacity-0" : "opacity-100",
+            )}
+          >
+            <AssetTable
+              sortStorageKey={`frame:tableSort:${projectId}:${folderId ?? "root"}`}
+              folders={folders ?? []}
+              assets={(videos ?? []) as unknown as AssetTableAsset[]}
+              onOpenFolder={(id) => navigateToFolder(id)}
+              onOpenAsset={(id) =>
+                navigate({ to: videoPath(resolvedTeamSlug, project._id, id) })
+              }
+              renderAssetActions={(row) => {
+                const video = videos?.find((v) => v._id === row._id);
+                if (!video) return null;
+                const canDownload =
+                  Boolean(video.s3Key) &&
+                  video.status !== "failed" &&
+                  video.status !== "uploading";
+                return (
                   <DropdownMenu>
-                    <DropdownMenuTrigger
-                      asChild
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <DropdownMenuTrigger asChild>
                       <button
                         type="button"
                         className="inline-flex h-8 w-8 cursor-pointer items-center justify-center text-[#888] hover:text-[#1a1a1a]"
@@ -651,31 +634,22 @@ export default function ProjectPage({
                     <DropdownMenuContent align="end">
                       {canDownload && (
                         <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleDownloadVideo(video._id, video.title);
-                          }}
+                          onClick={() =>
+                            void handleDownloadVideo(video._id, video.title)
+                          }
                         >
                           <Download className="mr-2 h-4 w-4" />
                           Download
                         </DropdownMenuItem>
                       )}
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleShareVideo(video);
-                        }}
-                      >
+                      <DropdownMenuItem onClick={() => void handleShareVideo(video)}>
                         <LinkIcon className="mr-2 h-4 w-4" />
                         Share
                       </DropdownMenuItem>
                       {canUpload && (
                         <DropdownMenuItem
                           className="text-[#dc2626] focus:text-[#dc2626]"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteVideo(video._id);
-                          }}
+                          onClick={() => handleDeleteVideo(video._id)}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Delete
@@ -683,10 +657,9 @@ export default function ProjectPage({
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                </div>
-                </VideoIntentTarget>
-              );
-            })}
+                );
+              }}
+            />
           </div>
         )}
       </div>

@@ -9,6 +9,12 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { identityName, requireFolderAccess, requireProjectAccess } from "./auth";
+import {
+  bumpForFolderCreate,
+  bumpForFolderDelete,
+  bumpForFolderMove,
+  touchFolder,
+} from "./activity";
 
 const MAX_NAME_LENGTH = 200;
 const MAX_DEPTH = 32;
@@ -88,12 +94,19 @@ export const create = mutation({
       throw new Error(`A folder named "${name}" already exists here.`);
     }
 
-    return await ctx.db.insert("folders", {
+    const newId = await ctx.db.insert("folders", {
       projectId: args.projectId,
       parentFolderId: args.parentFolderId,
       name,
       createdByClerkId: user.subject,
     });
+
+    const inserted = await ctx.db.get(newId);
+    if (inserted) {
+      await bumpForFolderCreate(ctx, inserted);
+    }
+
+    return newId;
   },
 });
 
@@ -118,6 +131,7 @@ export const rename = mutation({
     }
 
     await ctx.db.patch(args.folderId, { name });
+    await touchFolder(ctx, folder);
   },
 });
 
@@ -147,6 +161,7 @@ export const move = mutation({
       throw new Error("Folder depth limit exceeded.");
     }
 
+    await bumpForFolderMove(ctx, folder, args.newParentFolderId);
     await ctx.db.patch(args.folderId, { parentFolderId: args.newParentFolderId });
   },
 });
@@ -172,6 +187,7 @@ export const remove = mutation({
       throw new Error("Folder is not empty: contains assets.");
     }
 
+    await bumpForFolderDelete(ctx, folder);
     await ctx.db.delete(args.folderId);
   },
 });
@@ -182,13 +198,28 @@ export const list = query({
     parentFolderId: v.optional(v.id("folders")),
   },
   handler: async (ctx, args) => {
-    await requireProjectAccess(ctx, args.projectId);
-    return await ctx.db
+    const { project } = await requireProjectAccess(ctx, args.projectId);
+
+    const folders = await ctx.db
       .query("folders")
       .withIndex("by_project_and_parent", (q) =>
         q.eq("projectId", args.projectId).eq("parentFolderId", args.parentFolderId),
       )
       .collect();
+
+    // Resolve creator names from teamMembers — folders only store clerkId, but
+    // the table view needs a human-readable name in the "Uploaded by" column.
+    // One query per folder list (not per folder) keeps this O(team members).
+    const members = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_team", (q) => q.eq("teamId", project.teamId))
+      .collect();
+    const nameByClerkId = new Map(members.map((m) => [m.userClerkId, m.userName]));
+
+    return folders.map((folder) => ({
+      ...folder,
+      createdByName: nameByClerkId.get(folder.createdByClerkId) ?? "Unknown",
+    }));
   },
 });
 
@@ -276,6 +307,7 @@ export const ensurePath = internalMutation({
         )
         .filter((q) => q.eq(q.field("name"), sanitized))
         .collect();
+      let survivorId: Id<"folders">;
       if (siblings.length > 1) {
         const survivor = siblings.reduce((min, s) => (s._id < min._id ? s : min));
         for (const s of siblings) {
@@ -283,10 +315,16 @@ export const ensurePath = internalMutation({
             await ctx.db.delete(s._id);
           }
         }
-        parentId = survivor._id;
+        survivorId = survivor._id;
       } else {
-        parentId = newId;
+        survivorId = newId;
       }
+
+      const survivorDoc = await ctx.db.get(survivorId);
+      if (survivorDoc) {
+        await bumpForFolderCreate(ctx, survivorDoc);
+      }
+      parentId = survivorId;
     }
     return parentId;
   },

@@ -214,7 +214,7 @@ export default function DashboardLayout() {
 
   if (!isLoaded) {
     return (
-      <div className="h-full flex items-center justify-center bg-[#f0f0e8]">
+      <div className="theme-team h-full flex items-center justify-center bg-[#f0f0e8]">
         <div className="text-[#888]">Loading...</div>
       </div>
     );
@@ -222,7 +222,7 @@ export default function DashboardLayout() {
 
   if (!userId) {
     return (
-      <div className="h-full flex items-center justify-center bg-[#f0f0e8]">
+      <div className="theme-team h-full flex items-center justify-center bg-[#f0f0e8]">
         <div className="text-[#888]">
           {isResolvingPublicPlaybackExemption
             ? "Checking public playback access..."
@@ -233,7 +233,7 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className={cn("relative h-full flex flex-col bg-[#f0f0e8]")}>
+    <div className={cn("theme-team relative h-full flex flex-col bg-[#f0f0e8]")}>
       {/* Main content */}
       <main className="flex-1 overflow-auto flex flex-col">
         <DashboardUploadProvider value={uploadContext}>

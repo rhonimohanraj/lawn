@@ -3,15 +3,31 @@ import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, MutationCtx } from "./_generated/server";
-import { identityName, requireAssetAccess } from "./auth";
+import {
+  identityName,
+  requireAssetAccess,
+  requireFolderAccess,
+  requireProjectAccess,
+} from "./auth";
 import { generateUniqueToken, hashPassword, verifyPassword } from "./security";
-import { findShareLinkByToken, issueShareAccessGrant } from "./shareAccess";
+import {
+  findShareLinkByToken,
+  issueShareAccessGrant,
+  resolveActiveShareGrant,
+} from "./shareAccess";
+import { folderIsInShareScope, shareLinkScope } from "./shareScope";
 
 const shareLinkStatusValidator = v.union(
   v.literal("missing"),
   v.literal("expired"),
   v.literal("requiresPassword"),
   v.literal("ok"),
+);
+
+const shareScopeKindValidator = v.union(
+  v.literal("asset"),
+  v.literal("folder"),
+  v.literal("project"),
 );
 
 const MAX_SHARE_PASSWORD_LENGTH = 256;
@@ -118,6 +134,89 @@ export const create = mutation({
   },
 });
 
+/**
+ * Folder-scoped share — clients see every folder + asset under this folder.
+ * Use when sharing a deliverables folder with a client; they can browse and
+ * comment on each asset without you generating per-asset links.
+ */
+export const createForFolder = mutation({
+  args: {
+    folderId: v.id("folders"),
+    expiresInDays: v.optional(v.number()),
+    allowDownload: v.optional(v.boolean()),
+    password: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireFolderAccess(ctx, args.folderId, "member");
+
+    const token = await generateShareToken(ctx);
+    const expiresAt = args.expiresInDays
+      ? Date.now() + args.expiresInDays * 24 * 60 * 60 * 1000
+      : undefined;
+    const normalizedPassword = normalizeProvidedPassword(args.password);
+    const passwordHash = normalizedPassword
+      ? await hashPassword(normalizedPassword)
+      : undefined;
+
+    await ctx.db.insert("shareLinks", {
+      folderId: args.folderId,
+      token,
+      createdByClerkId: user.subject,
+      createdByName: identityName(user),
+      expiresAt,
+      allowDownload: args.allowDownload ?? false,
+      password: undefined,
+      passwordHash,
+      failedAccessAttempts: 0,
+      lockedUntil: undefined,
+      viewCount: 0,
+    });
+
+    return { token };
+  },
+});
+
+/**
+ * Project-scoped share — clients see every folder + asset in the project.
+ * Use sparingly; folder shares are usually the right granularity.
+ */
+export const createForProject = mutation({
+  args: {
+    projectId: v.id("projects"),
+    expiresInDays: v.optional(v.number()),
+    allowDownload: v.optional(v.boolean()),
+    password: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireProjectAccess(ctx, args.projectId, "member");
+
+    const token = await generateShareToken(ctx);
+    const expiresAt = args.expiresInDays
+      ? Date.now() + args.expiresInDays * 24 * 60 * 60 * 1000
+      : undefined;
+    const normalizedPassword = normalizeProvidedPassword(args.password);
+    const passwordHash = normalizedPassword
+      ? await hashPassword(normalizedPassword)
+      : undefined;
+
+    await ctx.db.insert("shareLinks", {
+      projectId: args.projectId,
+      token,
+      createdByClerkId: user.subject,
+      createdByName: identityName(user),
+      expiresAt,
+      allowDownload: args.allowDownload ?? false,
+      password: undefined,
+      passwordHash,
+      failedAccessAttempts: 0,
+      lockedUntil: undefined,
+      viewCount: 0,
+    });
+
+    return { token };
+  },
+});
+
 export const list = query({
   args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
@@ -147,16 +246,32 @@ export const list = query({
   },
 });
 
+/** Auth gate that handles all three scope kinds. Returns the link doc. */
+async function requireShareLinkAccess(
+  ctx: MutationCtx,
+  linkId: Id<"shareLinks">,
+  role: "member" | "admin" = "member",
+): Promise<Doc<"shareLinks">> {
+  const link = await ctx.db.get(linkId);
+  if (!link) throw new Error("Share link not found");
+
+  const scope = shareLinkScope(link);
+  if (scope.kind === "asset") {
+    await requireAssetAccess(ctx, scope.assetId, role);
+  } else if (scope.kind === "folder") {
+    await requireFolderAccess(ctx, scope.folderId, role);
+  } else if (scope.kind === "project") {
+    await requireProjectAccess(ctx, scope.projectId, role);
+  } else {
+    throw new Error("Share link has no valid scope — corrupt row.");
+  }
+  return link;
+}
+
 export const remove = mutation({
   args: { linkId: v.id("shareLinks") },
   handler: async (ctx, args) => {
-    const link = await ctx.db.get(args.linkId);
-    if (!link) throw new Error("Share link not found");
-
-    if (!link.assetId) {
-      throw new Error("Share link missing assetId — corrupt row.");
-    }
-    await requireAssetAccess(ctx, link.assetId, "member");
+    await requireShareLinkAccess(ctx, args.linkId, "member");
 
     await deleteShareAccessGrantsForLink(ctx, args.linkId);
     await ctx.db.delete(args.linkId);
@@ -171,13 +286,7 @@ export const update = mutation({
     password: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
-    const link = await ctx.db.get(args.linkId);
-    if (!link) throw new Error("Share link not found");
-
-    if (!link.assetId) {
-      throw new Error("Share link missing assetId — corrupt row.");
-    }
-    await requireAssetAccess(ctx, link.assetId, "member");
+    await requireShareLinkAccess(ctx, args.linkId, "member");
 
     const updates: Partial<Doc<"shareLinks">> = {};
 
@@ -212,6 +321,7 @@ export const getByToken = query({
   args: { token: v.string() },
   returns: v.object({
     status: shareLinkStatusValidator,
+    scope: v.optional(shareScopeKindValidator),
   }),
   handler: async (ctx, args) => {
     const link = await findShareLinkByToken(ctx, args.token);
@@ -224,20 +334,202 @@ export const getByToken = query({
       return { status: "expired" as const };
     }
 
-    if (!link.assetId) {
-      // Asset-only share link — legacy probe doesn't handle these.
+    const scope = shareLinkScope(link);
+    if (scope.kind === "invalid") {
       return { status: "missing" as const };
     }
-    const asset = await ctx.db.get(link.assetId);
-    if (!asset || asset.status !== "ready") {
-      return { status: "missing" as const };
+
+    // Validate the scoped target still exists.
+    if (scope.kind === "asset") {
+      const asset = await ctx.db.get(scope.assetId);
+      if (!asset || asset.status !== "ready") {
+        return { status: "missing" as const };
+      }
+    } else if (scope.kind === "folder") {
+      const folder = await ctx.db.get(scope.folderId);
+      if (!folder) return { status: "missing" as const };
+    } else if (scope.kind === "project") {
+      const project = await ctx.db.get(scope.projectId);
+      if (!project) return { status: "missing" as const };
     }
 
     if (hasPasswordProtection(link)) {
-      return { status: "requiresPassword" as const };
+      return { status: "requiresPassword" as const, scope: scope.kind };
     }
 
-    return { status: "ok" as const };
+    return { status: "ok" as const, scope: scope.kind };
+  },
+});
+
+/**
+ * Returns enough context to render the share page chrome before browsing:
+ *   - scope kind
+ *   - share title (project name + folder breadcrumb if folder/project scope)
+ *   - the folder id the browser should "start" in (undefined for project scope
+ *     means project root; folder scope returns the share's folderId)
+ *
+ * Doesn't read any assets — those come via browseUnderShareGrant.
+ */
+export const shareGrantContext = query({
+  args: { grantToken: v.string() },
+  handler: async (ctx, args) => {
+    const resolved = await resolveActiveShareGrant(ctx, args.grantToken);
+    if (!resolved) return null;
+
+    const scope = shareLinkScope(resolved.shareLink);
+    if (scope.kind === "invalid") return null;
+
+    if (scope.kind === "asset") {
+      const asset = await ctx.db.get(scope.assetId);
+      if (!asset || asset.status !== "ready") return null;
+      const project = await ctx.db.get(asset.projectId);
+      return {
+        scope: "asset" as const,
+        rootAssetId: asset._id,
+        title: asset.title,
+        projectName: project?.name ?? null,
+        startFolderId: undefined,
+        crumb: [] as { _id: Id<"folders">; name: string }[],
+      };
+    }
+
+    if (scope.kind === "folder") {
+      const folder = await ctx.db.get(scope.folderId);
+      if (!folder) return null;
+      const project = await ctx.db.get(folder.projectId);
+
+      // Build breadcrumb: project → ancestor folders (excluding the share root,
+      // since that IS the share's "home" and shouldn't be a clickable parent).
+      const crumb: { _id: Id<"folders">; name: string }[] = [
+        { _id: folder._id, name: folder.name },
+      ];
+      return {
+        scope: "folder" as const,
+        rootAssetId: null,
+        title: folder.name,
+        projectName: project?.name ?? null,
+        startFolderId: folder._id,
+        crumb,
+      };
+    }
+
+    // project scope
+    const project = await ctx.db.get(scope.projectId);
+    if (!project) return null;
+    return {
+      scope: "project" as const,
+      rootAssetId: null,
+      title: project.name,
+      projectName: project.name,
+      startFolderId: undefined,
+      crumb: [] as { _id: Id<"folders">; name: string }[],
+    };
+  },
+});
+
+/**
+ * List folders + assets at one level inside a folder/project share. The
+ * client passes parentFolderId to drill in (or undefined for the share's
+ * starting level). Every returned row is scope-validated.
+ *
+ * Asset-scoped shares: returns null. Caller should use the asset-detail
+ * flow instead.
+ */
+export const browseUnderShareGrant = query({
+  args: {
+    grantToken: v.string(),
+    parentFolderId: v.optional(v.id("folders")),
+  },
+  handler: async (ctx, args) => {
+    const resolved = await resolveActiveShareGrant(ctx, args.grantToken);
+    if (!resolved) return null;
+
+    const scope = shareLinkScope(resolved.shareLink);
+    if (scope.kind === "invalid" || scope.kind === "asset") {
+      return null;
+    }
+
+    // Resolve which projectId to scope to + validate parentFolderId is in scope.
+    let projectId: Id<"projects"> | null = null;
+    let resolvedParentFolderId: Id<"folders"> | undefined = args.parentFolderId;
+
+    if (scope.kind === "folder") {
+      const root = await ctx.db.get(scope.folderId);
+      if (!root) return null;
+      projectId = root.projectId;
+      // If client didn't pass parentFolderId, default to the share's root folder.
+      if (resolvedParentFolderId === undefined) {
+        resolvedParentFolderId = scope.folderId;
+      } else {
+        // Validate the requested folder is within the share's tree.
+        const requested = await ctx.db.get(resolvedParentFolderId);
+        if (!requested) return null;
+        if (!(await folderIsInShareScope(ctx, requested, resolved.shareLink))) {
+          return null;
+        }
+      }
+    } else {
+      // project scope
+      projectId = scope.projectId;
+      if (resolvedParentFolderId !== undefined) {
+        const requested = await ctx.db.get(resolvedParentFolderId);
+        if (!requested || requested.projectId !== projectId) return null;
+      }
+    }
+
+    const folders = await ctx.db
+      .query("folders")
+      .withIndex("by_project_and_parent", (q) =>
+        q.eq("projectId", projectId!).eq("parentFolderId", resolvedParentFolderId),
+      )
+      .collect();
+
+    const assets = await ctx.db
+      .query("assets")
+      .withIndex("by_project_and_folder", (q) =>
+        q.eq("projectId", projectId!).eq("folderId", resolvedParentFolderId),
+      )
+      .collect();
+
+    // Build breadcrumb up to (and including) the parentFolderId.
+    const crumb: { _id: Id<"folders">; name: string }[] = [];
+    let cursor = resolvedParentFolderId;
+    while (cursor) {
+      const f = await ctx.db.get(cursor);
+      if (!f) break;
+      crumb.unshift({ _id: f._id, name: f.name });
+      // For folder-scoped shares, stop at the share's root folder (don't
+      // expose ancestors above it).
+      if (scope.kind === "folder" && f._id === scope.folderId) break;
+      cursor = f.parentFolderId;
+    }
+
+    return {
+      parentFolderId: resolvedParentFolderId ?? null,
+      crumb,
+      folders: folders.map((f) => ({
+        _id: f._id,
+        _creationTime: f._creationTime,
+        name: f.name,
+        sizeBytes: f.sizeBytes,
+        lastModifiedAt: f.lastModifiedAt,
+      })),
+      assets: assets
+        .filter((a) => a.status === "ready")
+        .map((a) => ({
+          _id: a._id,
+          _creationTime: a._creationTime,
+          title: a.title,
+          assetKind: a.assetKind,
+          status: a.status,
+          workflowStatus: a.workflowStatus,
+          fileSize: a.fileSize,
+          duration: a.duration,
+          thumbnailUrl: a.thumbnailUrl,
+          uploaderName: a.uploaderName,
+          lastModifiedAt: a.lastModifiedAt,
+        })),
+    };
   },
 });
 
@@ -275,13 +567,24 @@ export const issueAccessGrant = mutation({
       return { ok: false, grantToken: null };
     }
 
-    if (!link.assetId) {
-      // Asset-only share link — legacy grant flow doesn't issue for these.
+    // Validate the scope target still exists. Asset shares additionally
+    // require status === "ready"; folder/project shares cover whatever is
+    // currently inside, regardless of any single asset's processing state.
+    const scope = shareLinkScope(link);
+    if (scope.kind === "invalid") {
       return { ok: false, grantToken: null };
     }
-    const asset = await ctx.db.get(link.assetId);
-    if (!asset || asset.status !== "ready") {
-      return { ok: false, grantToken: null };
+    if (scope.kind === "asset") {
+      const asset = await ctx.db.get(scope.assetId);
+      if (!asset || asset.status !== "ready") {
+        return { ok: false, grantToken: null };
+      }
+    } else if (scope.kind === "folder") {
+      const folder = await ctx.db.get(scope.folderId);
+      if (!folder) return { ok: false, grantToken: null };
+    } else if (scope.kind === "project") {
+      const project = await ctx.db.get(scope.projectId);
+      if (!project) return { ok: false, grantToken: null };
     }
 
     if (hasPasswordProtection(link)) {

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import {
   identityAvatarUrl,
   identityName,
@@ -7,6 +8,8 @@ import {
   requireUser,
 } from "./auth";
 import { resolveActiveShareGrant } from "./shareAccess";
+import { touchAsset, touchAssetById } from "./activity";
+import { assetIsInShareScope } from "./shareScope";
 
 function toThreadedComments<T extends { _id: string; parentId?: string; timestampSeconds: number; _creationTime: number }>(
   comments: T[],
@@ -98,7 +101,7 @@ export const create = mutation({
       }
     }
 
-    return await ctx.db.insert("comments", {
+    const commentId = await ctx.db.insert("comments", {
       assetId: args.assetId,
       userClerkId: user.subject,
       userName: identityName(user),
@@ -108,6 +111,9 @@ export const create = mutation({
       parentId: args.parentId,
       resolved: false,
     });
+
+    await touchAssetById(ctx, args.assetId);
+    return commentId;
   },
 });
 
@@ -146,7 +152,7 @@ export const createForPublic = mutation({
       }
     }
 
-    return await ctx.db.insert("comments", {
+    const commentId = await ctx.db.insert("comments", {
       assetId: asset._id,
       userClerkId: identity?.subject,
       userName: identity ? identityName(identity) : (guestName as string),
@@ -156,9 +162,20 @@ export const createForPublic = mutation({
       parentId: args.parentId,
       resolved: false,
     });
+
+    await touchAsset(ctx, asset);
+    return commentId;
   },
 });
 
+/**
+ * Comment on an asset reachable via a share grant.
+ *
+ * For asset-scoped shares, `assetId` is implied by the link and the param
+ * is optional (asserted to match if passed). For folder/project shares, the
+ * client MUST pass the assetId they're commenting on, and we scope-validate
+ * it against the share's reach.
+ */
 export const createForShareGrant = mutation({
   args: {
     grantToken: v.string(),
@@ -166,6 +183,7 @@ export const createForShareGrant = mutation({
     timestampSeconds: v.number(),
     parentId: v.optional(v.id("comments")),
     guestName: v.optional(v.string()),
+    assetId: v.optional(v.id("assets")),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -176,17 +194,31 @@ export const createForShareGrant = mutation({
     }
 
     const resolved = await resolveActiveShareGrant(ctx, args.grantToken);
-
     if (!resolved) {
       throw new Error("Invalid share grant");
     }
 
-    if (!resolved.shareLink.assetId) {
-      throw new Error("Share grant resolved without an assetId.");
+    // Determine target asset based on share scope.
+    let targetAssetId: Id<"assets"> | null = null;
+    if (resolved.shareLink.assetId) {
+      if (args.assetId && args.assetId !== resolved.shareLink.assetId) {
+        throw new Error("Asset is outside this share's scope.");
+      }
+      targetAssetId = resolved.shareLink.assetId;
+    } else {
+      if (!args.assetId) {
+        throw new Error("assetId is required for folder/project share grants.");
+      }
+      targetAssetId = args.assetId;
     }
-    const asset = await ctx.db.get(resolved.shareLink.assetId);
+
+    const asset = await ctx.db.get(targetAssetId);
     if (!asset || asset.status !== "ready") {
       throw new Error("Asset not found");
+    }
+
+    if (!(await assetIsInShareScope(ctx, asset, resolved.shareLink))) {
+      throw new Error("Asset is outside this share's scope.");
     }
 
     if (args.parentId) {
@@ -196,7 +228,7 @@ export const createForShareGrant = mutation({
       }
     }
 
-    return await ctx.db.insert("comments", {
+    const commentId = await ctx.db.insert("comments", {
       assetId: asset._id,
       userClerkId: identity?.subject,
       userName: identity ? identityName(identity) : (guestName as string),
@@ -206,6 +238,9 @@ export const createForShareGrant = mutation({
       parentId: args.parentId,
       resolved: false,
     });
+
+    await touchAsset(ctx, asset);
+    return commentId;
   },
 });
 
@@ -225,6 +260,9 @@ export const update = mutation({
     }
 
     await ctx.db.patch(args.commentId, { text: args.text });
+    if (comment.assetId) {
+      await touchAssetById(ctx, comment.assetId);
+    }
   },
 });
 
@@ -253,6 +291,9 @@ export const remove = mutation({
     }
 
     await ctx.db.delete(args.commentId);
+    if (comment.assetId) {
+      await touchAssetById(ctx, comment.assetId);
+    }
   },
 });
 
@@ -268,6 +309,7 @@ export const toggleResolved = mutation({
     await requireAssetAccess(ctx, comment.assetId, "member");
 
     await ctx.db.patch(args.commentId, { resolved: !comment.resolved });
+    await touchAssetById(ctx, comment.assetId);
   },
 });
 
@@ -303,18 +345,33 @@ export const getThreadedForPublic = query({
 });
 
 export const getThreadedForShareGrant = query({
-  args: { grantToken: v.string() },
+  args: {
+    grantToken: v.string(),
+    assetId: v.optional(v.id("assets")),
+  },
   handler: async (ctx, args) => {
     const resolved = await resolveActiveShareGrant(ctx, args.grantToken);
     if (!resolved) {
       return [];
     }
 
-    if (!resolved.shareLink.assetId) {
+    let targetAssetId: Id<"assets"> | null = null;
+    if (resolved.shareLink.assetId) {
+      if (args.assetId && args.assetId !== resolved.shareLink.assetId) {
+        return [];
+      }
+      targetAssetId = resolved.shareLink.assetId;
+    } else {
+      if (!args.assetId) return [];
+      targetAssetId = args.assetId;
+    }
+
+    const asset = await ctx.db.get(targetAssetId);
+    if (!asset || asset.status !== "ready") {
       return [];
     }
-    const asset = await ctx.db.get(resolved.shareLink.assetId);
-    if (!asset || asset.status !== "ready") {
+
+    if (!(await assetIsInShareScope(ctx, asset, resolved.shareLink))) {
       return [];
     }
 

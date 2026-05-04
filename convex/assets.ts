@@ -7,6 +7,13 @@ import { resolveActiveShareGrant } from "./shareAccess";
 import { assertTeamCanStoreBytes } from "./billingHelpers";
 import { assetKindValidator } from "./schema";
 import { classifyAssetKind } from "./assetKind";
+import {
+  bumpForAssetDelete,
+  bumpForAssetMove,
+  touchAssetById,
+  touchAssetWithSizeDelta,
+} from "./activity";
+import { assetIsInShareScope } from "./shareScope";
 
 const workflowStatusValidator = v.union(
   v.literal("review"),
@@ -95,6 +102,11 @@ export const create = mutation({
       visibility: "public",
       publicId,
     });
+
+    const inserted = await ctx.db.get(assetId);
+    if (inserted) {
+      await touchAssetWithSizeDelta(ctx, inserted, args.fileSize ?? 0);
+    }
 
     return assetId;
   },
@@ -234,19 +246,45 @@ export const getPublicIdByAssetId = query({
   },
 });
 
+/**
+ * Asset payload for the share page.
+ *
+ * For asset-scoped shares, `assetId` is implied — the existing single-asset
+ * flow doesn't need to pass it. For folder/project shares, the client browses
+ * to a specific asset and must pass `assetId` so we can scope-check it.
+ */
 export const getByShareGrant = query({
-  args: { grantToken: v.string() },
+  args: {
+    grantToken: v.string(),
+    assetId: v.optional(v.id("assets")),
+  },
   handler: async (ctx, args) => {
     const resolved = await resolveActiveShareGrant(ctx, args.grantToken);
     if (!resolved) {
       return null;
     }
 
-    if (!resolved.shareLink.assetId) {
+    // Resolve which asset the client wants:
+    //   - asset-scoped share: link.assetId is the only valid target.
+    //   - folder/project share: client passes args.assetId; we scope-check it.
+    let assetId: Id<"assets"> | null = null;
+    if (resolved.shareLink.assetId) {
+      // Asset-scoped — args.assetId, if passed, must match the link's asset.
+      if (args.assetId && args.assetId !== resolved.shareLink.assetId) {
+        return null;
+      }
+      assetId = resolved.shareLink.assetId;
+    } else {
+      if (!args.assetId) return null;
+      assetId = args.assetId;
+    }
+
+    const asset = await ctx.db.get(assetId);
+    if (!asset || asset.status !== "ready") {
       return null;
     }
-    const asset = await ctx.db.get(resolved.shareLink.assetId);
-    if (!asset || asset.status !== "ready") {
+
+    if (!(await assetIsInShareScope(ctx, asset, resolved.shareLink))) {
       return null;
     }
 
@@ -269,18 +307,33 @@ export const getByShareGrant = query({
 });
 
 export const getByShareGrantForDownload = query({
-  args: { grantToken: v.string() },
+  args: {
+    grantToken: v.string(),
+    assetId: v.optional(v.id("assets")),
+  },
   handler: async (ctx, args) => {
     const resolved = await resolveActiveShareGrant(ctx, args.grantToken);
     if (!resolved) {
       return null;
     }
 
-    if (!resolved.shareLink.assetId) {
+    let assetId: Id<"assets"> | null = null;
+    if (resolved.shareLink.assetId) {
+      if (args.assetId && args.assetId !== resolved.shareLink.assetId) {
+        return null;
+      }
+      assetId = resolved.shareLink.assetId;
+    } else {
+      if (!args.assetId) return null;
+      assetId = args.assetId;
+    }
+
+    const asset = await ctx.db.get(assetId);
+    if (!asset) {
       return null;
     }
-    const asset = await ctx.db.get(resolved.shareLink.assetId);
-    if (!asset) {
+
+    if (!(await assetIsInShareScope(ctx, asset, resolved.shareLink))) {
       return null;
     }
 
@@ -312,6 +365,7 @@ export const update = mutation({
     if (args.description !== undefined) updates.description = args.description;
 
     await ctx.db.patch(args.assetId, updates);
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -326,6 +380,7 @@ export const setVisibility = mutation({
     await ctx.db.patch(args.assetId, {
       visibility: args.visibility,
     });
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -340,6 +395,7 @@ export const updateWorkflowStatus = mutation({
     await ctx.db.patch(args.assetId, {
       workflowStatus: args.workflowStatus,
     });
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -352,6 +408,8 @@ export const updateWorkflowStatus = mutation({
 export const removeRow = internalMutation({
   args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
+    const asset = await ctx.db.get(args.assetId);
+
     const comments = await ctx.db
       .query("comments")
       .withIndex("by_asset", (q) => q.eq("assetId", args.assetId))
@@ -369,6 +427,9 @@ export const removeRow = internalMutation({
       await ctx.db.delete(link._id);
     }
 
+    if (asset) {
+      await bumpForAssetDelete(ctx, asset);
+    }
     await ctx.db.delete(args.assetId);
   },
 });
@@ -384,7 +445,7 @@ export const removeRow = internalMutation({
 export const remove = mutation({
   args: { assetId: v.id("assets") },
   handler: async (ctx, args) => {
-    await requireAssetAccess(ctx, args.assetId, "admin");
+    const { asset } = await requireAssetAccess(ctx, args.assetId, "admin");
 
     const comments = await ctx.db
       .query("comments")
@@ -403,6 +464,7 @@ export const remove = mutation({
       await ctx.db.delete(link._id);
     }
 
+    await bumpForAssetDelete(ctx, asset);
     await ctx.db.delete(args.assetId);
   },
 });
@@ -417,6 +479,7 @@ export const setUploadInfo = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db.get(args.assetId);
     const isVideo = existing?.assetKind === "video";
+    const previousSize = existing?.fileSize ?? 0;
     await ctx.db.patch(args.assetId, {
       s3Key: args.s3Key,
       muxUploadId: undefined,
@@ -430,6 +493,9 @@ export const setUploadInfo = internalMutation({
       contentType: args.contentType,
       status: "uploading",
     });
+    if (existing) {
+      await touchAssetWithSizeDelta(ctx, existing, args.fileSize - previousSize);
+    }
   },
 });
 
@@ -465,6 +531,7 @@ export const reconcileUploadedObjectMetadata = internalMutation({
       fileSize: actualSize,
       contentType: args.contentType,
     });
+    await touchAssetWithSizeDelta(ctx, asset, sizeDelta);
   },
 });
 
@@ -478,6 +545,7 @@ export const markAsProcessing = internalMutation({
       muxAssetStatus: "preparing",
       uploadError: undefined,
     });
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -499,6 +567,7 @@ export const markAsReady = internalMutation({
       uploadError: undefined,
       status: "ready",
     });
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -513,6 +582,7 @@ export const markNonVideoReady = internalMutation({
       status: "ready",
       uploadError: undefined,
     });
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -530,6 +600,9 @@ export const moveToFolder = mutation({
         throw new Error("Target folder is in a different project.");
       }
     }
+    if (asset.folderId !== args.folderId) {
+      await bumpForAssetMove(ctx, asset, args.folderId);
+    }
     await ctx.db.patch(args.assetId, { folderId: args.folderId });
   },
 });
@@ -545,6 +618,7 @@ export const markAsFailed = internalMutation({
       uploadError: args.uploadError,
       status: "failed",
     });
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -559,6 +633,7 @@ export const setMuxAssetReference = internalMutation({
       muxAssetStatus: "preparing",
       status: "processing",
     });
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -573,6 +648,7 @@ export const setMuxPlaybackId = internalMutation({
       muxPlaybackId: args.muxPlaybackId,
       thumbnailUrl: args.thumbnailUrl,
     });
+    await touchAssetById(ctx, args.assetId);
   },
 });
 
@@ -650,5 +726,6 @@ export const updateDuration = mutation({
   handler: async (ctx, args) => {
     await requireAssetAccess(ctx, args.assetId, "member");
     await ctx.db.patch(args.assetId, { duration: args.duration });
+    await touchAssetById(ctx, args.assetId);
   },
 });

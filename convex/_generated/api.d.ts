@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as activity from "../activity.js";
+import type * as activityBackfill from "../activityBackfill.js";
 import type * as assetActions from "../assetActions.js";
 import type * as assetKind from "../assetKind.js";
 import type * as assetPresence from "../assetPresence.js";
@@ -22,6 +24,7 @@ import type * as foldersBackfill from "../foldersBackfill.js";
 import type * as http from "../http.js";
 import type * as migration from "../migration.js";
 import type * as migrationActions from "../migrationActions.js";
+import type * as migrationStatus from "../migrationStatus.js";
 import type * as mux from "../mux.js";
 import type * as muxActions from "../muxActions.js";
 import type * as projects from "../projects.js";
@@ -30,6 +33,7 @@ import type * as s3 from "../s3.js";
 import type * as security from "../security.js";
 import type * as shareAccess from "../shareAccess.js";
 import type * as shareLinks from "../shareLinks.js";
+import type * as shareScope from "../shareScope.js";
 import type * as teams from "../teams.js";
 import type * as workspace from "../workspace.js";
 
@@ -40,6 +44,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  activity: typeof activity;
+  activityBackfill: typeof activityBackfill;
   assetActions: typeof assetActions;
   assetKind: typeof assetKind;
   assetPresence: typeof assetPresence;
@@ -54,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   migration: typeof migration;
   migrationActions: typeof migrationActions;
+  migrationStatus: typeof migrationStatus;
   mux: typeof mux;
   muxActions: typeof muxActions;
   projects: typeof projects;
@@ -62,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   security: typeof security;
   shareAccess: typeof shareAccess;
   shareLinks: typeof shareLinks;
+  shareScope: typeof shareScope;
   teams: typeof teams;
   workspace: typeof workspace;
 }>;

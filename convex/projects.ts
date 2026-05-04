@@ -31,8 +31,11 @@ export const list = query({
       .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
       .collect();
 
-    // Get asset counts for each project
-    const projectsWithCounts = await Promise.all(
+    // Per-project asset count. sizeBytes + lastModifiedAt come from the row
+    // itself — denormalized by convex/activity.ts on every mutation, with
+    // _creationTime as the fallback when lastModifiedAt is undefined for
+    // pre-backfill rows.
+    return await Promise.all(
       projects.map(async (project) => {
         const assets = await ctx.db
           .query("assets")
@@ -42,10 +45,8 @@ export const list = query({
           ...project,
           assetCount: assets.length,
         };
-      })
+      }),
     );
-
-    return projectsWithCounts;
   },
 });
 

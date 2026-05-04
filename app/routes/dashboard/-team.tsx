@@ -36,7 +36,7 @@ import { prewarmProject } from "./-project.data";
 import { useTeamData } from "./-team.data";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { ViewModeToggle, type ViewMode } from "@/components/ViewModeToggle";
-import { ProjectListView } from "@/components/projects/ProjectListView";
+import { ProjectTable } from "@/components/projects/ProjectTable";
 
 type TeamProjectCardProps = {
   teamSlug: string;
@@ -307,12 +307,36 @@ export default function TeamPage() {
             ))}
           </div>
         ) : (
-          <ProjectListView
+          <ProjectTable
             projects={projects ?? []}
             onOpen={(projectId) => navigate({ to: projectPath(team.slug, projectId) })}
-            onDelete={handleDeleteProject}
-            canDelete={canCreateProject}
-            className={cn("transition-opacity duration-300", isLoadingData ? "opacity-0" : "opacity-100")}
+            sortStorageKey={`frame:projectTableSort:${team?.slug ?? "default"}`}
+            renderActions={
+              canCreateProject
+                ? (project) => (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          className="text-[#dc2626] focus:text-[#dc2626]"
+                          onClick={() => handleDeleteProject(project._id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                : undefined
+            }
+            className={cn(
+              "transition-opacity duration-300",
+              isLoadingData ? "opacity-0" : "opacity-100",
+            )}
           />
         )}
       </div>

@@ -92,6 +92,11 @@ export default defineSchema({
     teamId: v.id("teams"),
     name: v.string(),
     description: v.optional(v.string()),
+    // Denormalized stats — bumped by convex/activity.ts on every asset/comment
+    // mutation. Optional during the rollout window; convex/activityBackfill
+    // populates them for existing rows.
+    sizeBytes: v.optional(v.number()),
+    lastModifiedAt: v.optional(v.number()),
   }).index("by_team", ["teamId"]),
 
   // Nested folders inside a project. parentFolderId === undefined means
@@ -101,6 +106,12 @@ export default defineSchema({
     parentFolderId: v.optional(v.id("folders")),
     name: v.string(),
     createdByClerkId: v.string(),
+    // Denormalized: sum of own assets + descendant folders. Populated by
+    // convex/activity.ts on every asset/folder mutation that affects size.
+    sizeBytes: v.optional(v.number()),
+    // Bumped on any descendant activity (asset edit, comment, status change,
+    // child folder mutation). Used to sort folders in the table view.
+    lastModifiedAt: v.optional(v.number()),
   })
     .index("by_project", ["projectId"])
     .index("by_parent", ["parentFolderId"])
@@ -150,6 +161,11 @@ export default defineSchema({
     // copied from `videos`, this stores the original videos._id so we can
     // rewrite foreign keys on comments + shareLinks deterministically.
     legacyVideoId: v.optional(v.id("videos")),
+    // Bumped by convex/activity.ts on every asset mutation + every comment
+    // mutation against this asset. Used by the table view's "Modified" column
+    // and by the activity panel's recency sort. Falls back to _creationTime
+    // for rows that predate this field (backfilled by activityBackfill).
+    lastModifiedAt: v.optional(v.number()),
   })
     .index("by_project", ["projectId"])
     .index("by_project_and_folder", ["projectId", "folderId"])
@@ -226,7 +242,15 @@ export default defineSchema({
     .index("by_parent", ["parentId"]),
 
   shareLinks: defineTable({
+    // Exactly ONE of {assetId, folderId, projectId} should be set per row.
+    // assetId — single-asset share (legacy + still supported).
+    // folderId — share covers this folder + every descendant folder/asset.
+    // projectId — share covers every folder/asset in the project.
+    // videoId — legacy migration backref, write-frozen; new code only writes
+    // assetId/folderId/projectId.
     assetId: v.optional(v.id("assets")),
+    folderId: v.optional(v.id("folders")),
+    projectId: v.optional(v.id("projects")),
     videoId: v.optional(v.id("videos")),
     token: v.string(),
     createdByClerkId: v.string(),
@@ -241,6 +265,8 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_asset", ["assetId"])
+    .index("by_folder", ["folderId"])
+    .index("by_project", ["projectId"])
     .index("by_video", ["videoId"]),
 
   shareAccessGrants: defineTable({

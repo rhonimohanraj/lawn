@@ -562,7 +562,10 @@ export const getPublicPlaybackSession = action({
 });
 
 export const getSharedPlaybackSession = action({
-  args: { grantToken: v.string() },
+  args: {
+    grantToken: v.string(),
+    assetId: v.optional(v.id("assets")),
+  },
   returns: v.object({
     url: v.string(),
     posterUrl: v.string(),
@@ -573,6 +576,7 @@ export const getSharedPlaybackSession = action({
   ): Promise<{ url: string; posterUrl: string }> => {
     const result = await ctx.runQuery(api.assets.getByShareGrant, {
       grantToken: args.grantToken,
+      assetId: args.assetId,
     });
 
     if (!result?.asset?.muxPlaybackId) {
@@ -657,7 +661,10 @@ export const getPublicDownloadUrl = action({
  * those to display even when the share owner disabled file downloads.
  */
 export const getSharedViewUrl = action({
-  args: { grantToken: v.string() },
+  args: {
+    grantToken: v.string(),
+    assetId: v.optional(v.id("assets")),
+  },
   returns: v.object({
     url: v.string(),
     filename: v.string(),
@@ -665,6 +672,7 @@ export const getSharedViewUrl = action({
   handler: async (ctx, args): Promise<{ url: string; filename: string }> => {
     const result = await ctx.runQuery(api.assets.getByShareGrantForDownload, {
       grantToken: args.grantToken,
+      assetId: args.assetId,
     });
 
     if (!result?.asset) {
@@ -685,7 +693,10 @@ export const getSharedViewUrl = action({
 });
 
 export const getSharedDownloadUrl = action({
-  args: { grantToken: v.string() },
+  args: {
+    grantToken: v.string(),
+    assetId: v.optional(v.id("assets")),
+  },
   returns: v.object({
     url: v.string(),
     filename: v.string(),
@@ -693,6 +704,7 @@ export const getSharedDownloadUrl = action({
   handler: async (ctx, args): Promise<{ url: string; filename: string }> => {
     const result = await ctx.runQuery(api.assets.getByShareGrantForDownload, {
       grantToken: args.grantToken,
+      assetId: args.assetId,
     });
 
     if (!result?.asset) {

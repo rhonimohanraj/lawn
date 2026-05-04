@@ -1,6 +1,6 @@
 import { useAction, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useUser } from "@clerk/tanstack-react-start";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
@@ -13,13 +13,69 @@ import { triggerDownload } from "@/lib/download";
 import { formatDuration, formatTimestamp, formatRelativeTime } from "@/lib/utils";
 import { useVideoPresence } from "@/lib/useVideoPresence";
 import { VideoWatchers } from "@/components/presence/VideoWatchers";
-import { Lock, Video, AlertCircle, MessageSquare, Clock, Download } from "lucide-react";
+import { ShareBrowser } from "@/components/share/ShareBrowser";
+import {
+  ArrowLeft,
+  Lock,
+  Video,
+  AlertCircle,
+  MessageSquare,
+  Clock,
+  Download,
+} from "lucide-react";
+import type { Id } from "@convex/_generated/dataModel";
 import { useShareData } from "./-share.data";
 
 export default function SharePage() {
   const params = useParams({ strict: false });
   const token = params.token as string;
   const { user, isLoaded: isUserLoaded } = useUser();
+  const navigate = useNavigate({});
+  const pathname = useLocation().pathname;
+  const searchStr = useLocation().search;
+
+  // Folder/project shares are browseable. Track which folder + asset the
+  // client is viewing via URL search params so refreshes preserve location.
+  const { browseFolderId, selectedAssetId } = useMemo(() => {
+    const sp = new URLSearchParams(searchStr);
+    const f = sp.get("folder");
+    const a = sp.get("asset");
+    return {
+      browseFolderId: (f ? (f as Id<"folders">) : null) as Id<"folders"> | null,
+      selectedAssetId: (a ? (a as Id<"assets">) : null) as Id<"assets"> | null,
+    };
+  }, [searchStr]);
+
+  const setSearchParams = useCallback(
+    (next: { folder?: Id<"folders"> | null; asset?: Id<"assets"> | null }) => {
+      const sp = new URLSearchParams(searchStr);
+      if (next.folder === null) sp.delete("folder");
+      else if (next.folder !== undefined) sp.set("folder", next.folder);
+      if (next.asset === null) sp.delete("asset");
+      else if (next.asset !== undefined) sp.set("asset", next.asset);
+      const qs = sp.toString();
+      navigate({ to: pathname + (qs ? `?${qs}` : ""), replace: false });
+    },
+    [navigate, pathname, searchStr],
+  );
+
+  const openFolder = useCallback(
+    (folderId: Id<"folders">) =>
+      setSearchParams({ folder: folderId, asset: null }),
+    [setSearchParams],
+  );
+  const openAsset = useCallback(
+    (assetId: Id<"assets">) => setSearchParams({ asset: assetId }),
+    [setSearchParams],
+  );
+  const navigateHome = useCallback(
+    () => setSearchParams({ folder: null, asset: null }),
+    [setSearchParams],
+  );
+  const backToBrowser = useCallback(
+    () => setSearchParams({ asset: null }),
+    [setSearchParams],
+  );
 
   const issueAccessGrant = useMutation(api.shareLinks.issueAccessGrant);
   const createComment = useMutation(api.comments.createForShareGrant);
@@ -65,7 +121,16 @@ export default function SharePage() {
     setDownloadError(null);
   }, [token]);
 
-  const { shareInfo, videoData, comments } = useShareData({ token, grantToken });
+  const { shareInfo, grantContext, browse, videoData, comments } = useShareData({
+    token,
+    grantToken,
+    parentFolderId: browseFolderId,
+    selectedAssetId,
+  });
+  const isMultiAssetShare =
+    shareInfo?.scope === "folder" || shareInfo?.scope === "project";
+  const isViewingAsset =
+    shareInfo?.scope === "asset" || Boolean(selectedAssetId);
   const canTrackPresence = Boolean(playbackSession?.url && videoData?.asset?._id);
   const { watchers } = useVideoPresence({
     assetId: videoData?.asset?._id,
@@ -83,7 +148,10 @@ export default function SharePage() {
       return;
     }
     let cancelled = false;
-    void getViewUrl({ grantToken })
+    void getViewUrl({
+      grantToken,
+      assetId: selectedAssetId ?? undefined,
+    })
       .then((res) => {
         if (cancelled) return;
         setSharedDownloadUrl(res.url);
@@ -95,7 +163,7 @@ export default function SharePage() {
     return () => {
       cancelled = true;
     };
-  }, [getViewUrl, grantToken, isNonVideoAsset]);
+  }, [getViewUrl, grantToken, isNonVideoAsset, selectedAssetId]);
 
   useEffect(() => {
     setGrantToken(null);
@@ -136,7 +204,10 @@ export default function SharePage() {
   }, [acquireGrant, grantToken, hasAttemptedAutoGrant, shareInfo]);
 
   useEffect(() => {
-    if (!grantToken) {
+    // For folder/project shares, only load playback once the client has
+    // drilled into a specific asset. Without this gate, the action call
+    // would 4xx on the browser screen.
+    if (!grantToken || !isViewingAsset) {
       setPlaybackSession(null);
       setPlaybackError(null);
       return;
@@ -146,7 +217,10 @@ export default function SharePage() {
     setIsLoadingPlayback(true);
     setPlaybackError(null);
 
-    void getPlaybackSession({ grantToken })
+    void getPlaybackSession({
+      grantToken,
+      assetId: selectedAssetId ?? undefined,
+    })
       .then((session) => {
         if (cancelled) return;
         setPlaybackSession(session);
@@ -163,7 +237,7 @@ export default function SharePage() {
     return () => {
       cancelled = true;
     };
-  }, [getPlaybackSession, grantToken]);
+  }, [getPlaybackSession, grantToken, selectedAssetId, isViewingAsset]);
 
   const flattenedComments = useMemo(() => {
     if (!comments) return [] as Array<{ _id: string; timestampSeconds: number; resolved: boolean }>;
@@ -204,6 +278,7 @@ export default function SharePage() {
         text: commentText.trim(),
         timestampSeconds: currentTime,
         guestName: user ? undefined : trimmedGuestName,
+        assetId: selectedAssetId ?? undefined,
       });
       setCommentText("");
     } catch {
@@ -219,7 +294,10 @@ export default function SharePage() {
     setDownloadError(null);
     setIsDownloading(true);
     try {
-      const result = await getDownloadUrl({ grantToken });
+      const result = await getDownloadUrl({
+        grantToken,
+        assetId: selectedAssetId ?? undefined,
+      });
       triggerDownload(result.url, result.filename);
     } catch (error) {
       console.error("Failed to prepare shared download:", error);
@@ -231,13 +309,16 @@ export default function SharePage() {
     } finally {
       setIsDownloading(false);
     }
-  }, [getDownloadUrl, grantToken, isDownloading]);
+  }, [getDownloadUrl, grantToken, isDownloading, selectedAssetId]);
 
   const isBootstrappingShare =
     shareInfo === undefined ||
     (shareInfo?.status === "ok" &&
       ((!grantToken && (!hasAttemptedAutoGrant || isRequestingGrant)) ||
-        (Boolean(grantToken) && videoData === undefined)));
+        // Only wait on videoData when we're actually viewing an asset.
+        // Folder/project shares legitimately leave videoData undefined while
+        // the client is on the browser screen.
+        (Boolean(grantToken) && isViewingAsset && videoData === undefined)));
 
   if (isBootstrappingShare) {
     return (
@@ -313,6 +394,48 @@ export default function SharePage() {
     );
   }
 
+  // Folder/project share — render the browser when no asset is selected.
+  // Asset-scoped shares fall through to the single-asset rendering below.
+  if (isMultiAssetShare && !selectedAssetId) {
+    return (
+      <div className="min-h-screen bg-[#f0f0e8]">
+        <header className="bg-[#f0f0e8] border-b-2 border-[#1a1a1a] px-6 py-4">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+            <Link
+              preload="intent"
+              to="/"
+              className="text-[#888] hover:text-[#1a1a1a] text-sm flex items-center gap-2 font-bold"
+            >
+              Frame
+            </Link>
+            {grantContext?.projectName && (
+              <span className="text-xs font-mono text-[#888] truncate">
+                {grantContext.projectName}
+              </span>
+            )}
+          </div>
+        </header>
+        <main className="max-w-6xl mx-auto p-6">
+          <ShareBrowser
+            title={grantContext?.title ?? "Shared"}
+            data={browse}
+            onOpenFolder={openFolder}
+            onOpenAsset={openAsset}
+            onNavigateHome={navigateHome}
+          />
+        </main>
+        <footer className="border-t-2 border-[#1a1a1a] px-6 py-4 mt-8">
+          <div className="max-w-6xl mx-auto text-center text-sm text-[#888]">
+            Shared via{" "}
+            <Link to="/" preload="intent" className="text-[#1a1a1a] hover:text-[#2d5a2d] font-bold">
+              Frame
+            </Link>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
   if (!videoData?.asset) {
     return (
       <div className="min-h-screen bg-[#f0f0e8] flex items-center justify-center p-4">
@@ -336,14 +459,27 @@ export default function SharePage() {
   return (
     <div className="min-h-screen bg-[#f0f0e8]">
       <header className="bg-[#f0f0e8] border-b-2 border-[#1a1a1a] px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link
-            preload="intent"
-            to="/"
-            className="text-[#888] hover:text-[#1a1a1a] text-sm flex items-center gap-2 font-bold"
-          >
-            Frame
-          </Link>
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {isMultiAssetShare ? (
+              <button
+                type="button"
+                onClick={backToBrowser}
+                className="text-[#888] hover:text-[#1a1a1a] text-sm flex items-center gap-1.5 font-bold"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {grantContext?.title ?? "Back"}
+              </button>
+            ) : (
+              <Link
+                preload="intent"
+                to="/"
+                className="text-[#888] hover:text-[#1a1a1a] text-sm flex items-center gap-2 font-bold"
+              >
+                Frame
+              </Link>
+            )}
+          </div>
           <Button
             variant="outline"
             size="sm"

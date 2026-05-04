@@ -59,119 +59,91 @@
   font-display: block;
 }
 
+/*
+ * Theming model:
+ *   :root              = Direction B "client light" (warm cream surfaces).
+ *                        Default for marketing, /share/*, /watch/*.
+ *   .theme-team        = Direction A "team dark" override applied as a
+ *                        wrapper class on the /dashboard/* layout. Footage and
+ *                        stills look correct against neutral dark; cream
+ *                        actively distorts video color.
+ *
+ * Components keep their existing brutalist arbitrary-value class names
+ * (bg-[#f0f0e8], border-[#1a1a1a], etc.) — the legacy mappings at the bottom
+ * of this file route them to CSS vars so retoning happens centrally.
+ */
+
 :root {
-  /* Core palette - warm cream and dark */
-  --background: #f0f0e8;
-  --background-alt: #1a1a1a;
+  /* Direction B — Client Light (warm cream, subtle borders) */
+  --background: #fafaf7;
+  --background-alt: #ffffff;
   --surface: #ffffff;
-  --surface-alt: #e8e8e0;
-  --surface-strong: #1a1a1a;
-  --surface-muted: #d8d8d0;
+  --surface-alt: #f5f3ee;
+  --surface-strong: #171717;
+  --surface-muted: #ece9e2;
 
-  /* Text */
-  --foreground: #1a1a1a;
-  --foreground-muted: #888888;
-  --foreground-subtle: #aaaaaa;
-  --foreground-inverse: #f0f0e8;
+  --foreground: #171717;
+  --foreground-muted: #71717a;
+  --foreground-subtle: #a1a1aa;
+  --foreground-inverse: #ffffff;
 
-  /* Borders */
-  --border: #1a1a1a;
-  --border-subtle: #cccccc;
-  --shadow-color: #1a1a1a;
-  --shadow-accent: rgba(45,90,45,1);
+  --border: #e7e5e0;
+  --border-strong: #d4d2cc;
+  --border-subtle: #f0eee8;
+  --shadow-color: rgba(23, 23, 23, 0.06);
+  --shadow-accent: rgba(78, 163, 116, 0.18);
 
-  /* Accent - forest green */
-  --accent: #2d5a2d;
-  --accent-hover: #3a6a3a;
-  --accent-light: #7cb87c;
+  /* Forest green demoted to active-state + primary CTA only.
+     New shade #4ea374 — same hue family as the legacy #2d5a2d but with the
+     contrast WCAG needs. Old shade was failing 4.5:1 on cream backgrounds. */
+  --accent: #4ea374;
+  --accent-hover: #5cb582;
+  --accent-light: #b8d9c4;
 
-  /* Semantic colors */
   --destructive: #dc2626;
   --destructive-subtle: #fef2f2;
-  --success: #16a34a;
+  --success: #4ea374;
   --success-subtle: #f0fdf4;
   --warning: #ca8a04;
   --warning-subtle: #fefce8;
 
-  /* Focus */
   --ring: var(--accent);
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
-  /* Core palette - deep olive/charcoal */
-  --background: #101410;
-  --background-alt: #e7ede4;
-  --surface: #171c17;
-  --surface-alt: #202720;
-  --surface-strong: #2a332b;
-  --surface-muted: #2b332b;
+/* Direction A — Team Dark. Applied as a wrapper class on /dashboard/* */
+.theme-team,
+:root[data-theme="team"] {
+  --background: #0b0b0c;
+  --background-alt: #161618;
+  --surface: #161618;
+  --surface-alt: #1f1f22;
+  --surface-strong: #fafafa;
+  --surface-muted: #27272a;
 
-  /* Text */
-  --foreground: #e7ede4;
-  --foreground-muted: #9aa79b;
-  --foreground-subtle: #7e897f;
-  --foreground-inverse: #101410;
+  --foreground: #fafafa;
+  --foreground-muted: #a1a1aa;
+  --foreground-subtle: #71717a;
+  --foreground-inverse: #0b0b0c;
 
-  /* Borders */
-  --border: #e7ede4;
-  --border-subtle: #374038;
-  --shadow-color: #7cb87c;
-  --shadow-accent: #7cb87c;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --border-subtle: #1f1f22;
+  --shadow-color: rgba(0, 0, 0, 0.4);
+  --shadow-accent: rgba(78, 163, 116, 0.25);
 
-  /* Accent - forest green lifted for dark backgrounds */
-  --accent: #7cb87c;
-  --accent-hover: #91c991;
-  --accent-light: #b8ddb8;
+  --accent: #4ea374;
+  --accent-hover: #5cb582;
+  --accent-light: #6cc594;
 
-  /* Semantic colors */
   --destructive: #f87171;
   --destructive-subtle: #2d1618;
-  --success: #4ade80;
+  --success: #4ea374;
   --success-subtle: #14291a;
   --warning: #fbbf24;
   --warning-subtle: #2f250f;
 
   color-scheme: dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    /* Core palette - deep olive/charcoal */
-    --background: #101410;
-    --background-alt: #e7ede4;
-    --surface: #171c17;
-    --surface-alt: #202720;
-    --surface-strong: #2a332b;
-    --surface-muted: #2b332b;
-
-    /* Text */
-    --foreground: #e7ede4;
-    --foreground-muted: #9aa79b;
-    --foreground-subtle: #7e897f;
-    --foreground-inverse: #101410;
-
-    /* Borders */
-    --border: #e7ede4;
-    --border-subtle: #374038;
-    --shadow-color: #7cb87c;
-    --shadow-accent: #7cb87c;
-
-    /* Accent - forest green lifted for dark backgrounds */
-    --accent: #7cb87c;
-    --accent-hover: #91c991;
-    --accent-light: #b8ddb8;
-
-    /* Semantic colors */
-    --destructive: #f87171;
-    --destructive-subtle: #2d1618;
-    --success: #4ade80;
-    --success-subtle: #14291a;
-    --warning: #fbbf24;
-    --warning-subtle: #2f250f;
-
-    color-scheme: dark;
-  }
 }
 
 @theme inline {
@@ -193,7 +165,7 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: 'Geist', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -215,11 +187,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-subtle);
+  background: var(--border);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--foreground-muted);
+  background: var(--border-strong);
 }
 
 /* Video.js customizations - keep dark for video player */
@@ -268,7 +241,7 @@ body {
 }
 
 .video-js .vjs-play-progress {
-  background-color: var(--accent-light);
+  background-color: var(--accent);
 }
 
 .video-js .vjs-play-progress:before {
@@ -362,11 +335,19 @@ body {
   font-family: 'Geist Mono', ui-monospace, monospace;
 }
 
-/* Map legacy hardcoded utility tokens to theme vars so dark mode works app-wide */
+/*
+ * Legacy hardcoded utility tokens routed to theme vars.
+ *
+ * Components written against the original brutalist palette use Tailwind
+ * arbitrary-value classes like bg-[#f0f0e8] and border-[#1a1a1a]. Mapping
+ * those classes to CSS vars here means flipping themes (cream ⇄ dark) is
+ * a single var-value change rather than a per-component edit. This survives
+ * the redesign — we only changed what the vars resolve to.
+ */
 [class~="bg-[#f0f0e8]"] { background-color: var(--background) !important; }
 [class~="text-[#f0f0e8]"] { color: var(--foreground-inverse) !important; }
 
-[class~="bg-[#1a1a1a]"] { background-color: var(--foreground) !important; }
+[class~="bg-[#1a1a1a]"] { background-color: var(--surface-strong) !important; }
 [class~="text-[#1a1a1a]"] { color: var(--foreground) !important; }
 [class~="border-[#1a1a1a]"] { border-color: var(--border) !important; }
 
@@ -383,10 +364,12 @@ body {
 [class~="text-[#888888]"] { color: var(--foreground-muted) !important; }
 [class~="bg-[#888]"] { background-color: var(--foreground-muted) !important; }
 
-[class~="text-[#ccc]"] { color: var(--border-subtle) !important; }
-[class~="border-[#ccc]"] { border-color: var(--border-subtle) !important; }
-[class~="text-[#cccccc]"] { color: var(--border-subtle) !important; }
-[class~="border-[#cccccc]"] { border-color: var(--border-subtle) !important; }
+[class~="text-[#666]"] { color: var(--foreground-muted) !important; }
+
+[class~="text-[#ccc]"] { color: var(--border-strong) !important; }
+[class~="border-[#ccc]"] { border-color: var(--border) !important; }
+[class~="text-[#cccccc]"] { color: var(--border-strong) !important; }
+[class~="border-[#cccccc]"] { border-color: var(--border) !important; }
 
 [class~="bg-[#2d5a2d]"] { background-color: var(--accent) !important; }
 [class~="text-[#2d5a2d]"] { color: var(--accent) !important; }
@@ -403,6 +386,8 @@ body {
 [class~="bg-[#dc2626]/10"] {
   background-color: color-mix(in srgb, var(--destructive) 10%, transparent) !important;
 }
+[class~="bg-[#fef2f2]"] { background-color: var(--destructive-subtle) !important; }
+[class~="text-[#7f1d1d]"] { color: var(--destructive) !important; }
 
 [class~="text-[#ca8a04]"] { color: var(--warning) !important; }
 [class~="bg-[#ca8a04]"] { background-color: var(--warning) !important; }
@@ -411,7 +396,7 @@ body {
   background-color: color-mix(in srgb, var(--warning) 10%, transparent) !important;
 }
 
-[class~="hover:bg-[#1a1a1a]"]:hover { background-color: var(--foreground) !important; }
+[class~="hover:bg-[#1a1a1a]"]:hover { background-color: var(--surface-strong) !important; }
 [class~="hover:bg-[#e8e8e0]"]:hover { background-color: var(--surface-alt) !important; }
 [class~="hover:bg-[#d8d8d0]"]:hover { background-color: var(--surface-muted) !important; }
 [class~="hover:bg-[#3a6a3a]"]:hover { background-color: var(--accent-hover) !important; }
@@ -427,4 +412,59 @@ body {
 }
 .group:hover [class~="group-hover:text-[#1a1a1a]"] {
   color: var(--foreground) !important;
+}
+
+/*
+ * Brutalist offset shadow → soft modern shadow.
+ *
+ * Components use `shadow-[Npx_Npx_0px_0px_var(--shadow-color)]` (and the
+ * accent variant) at offsets ranging 2/4/6/8/12 px. We catch all sizes via
+ * a substring match on the class attribute — any class with "shadow-[" and
+ * either var gets the soft override, killing the brutalist hard offset
+ * regardless of which size was authored. !important defeats the per-utility
+ * Tailwind rule. Hover variants (`hover:shadow-[...]`) are caught too — the
+ * "press" effect that flipped between two offset shadows is gone, replaced
+ * by a single static soft shadow.
+ */
+[class*="shadow-["][class*="var(--shadow-color)"] {
+  box-shadow: 0 1px 2px rgba(23, 23, 23, 0.04), 0 2px 6px rgba(23, 23, 23, 0.06) !important;
+}
+[class*="shadow-["][class*="var(--shadow-accent)"] {
+  box-shadow: 0 2px 8px rgba(78, 163, 116, 0.18) !important;
+}
+
+.theme-team [class*="shadow-["][class*="var(--shadow-color)"] {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.32), 0 4px 16px rgba(0, 0, 0, 0.18) !important;
+}
+.theme-team [class*="shadow-["][class*="var(--shadow-accent)"] {
+  box-shadow: 0 4px 16px rgba(78, 163, 116, 0.28) !important;
+}
+
+/* Kill the brutalist "press" hover translate effect — the soft shadow above
+ * already conveys depth, the 2px translate is just noise without the offset
+ * shadow it was paired with. */
+[class*="hover:translate-y-["]:hover,
+[class*="hover:translate-x-["]:hover {
+  --tw-translate-y: 0 !important;
+  --tw-translate-x: 0 !important;
+}
+
+/*
+ * Soften 2px brutalist borders to 1px.
+ *
+ * Components use `border-2` extensively for that hard brutalist edge. The
+ * redesign uses 1px borders with refined colors. We collapse border-2 to 1px
+ * site-wide so the existing class names produce the new visual language.
+ */
+[class~="border-2"] {
+  border-width: 1px !important;
+}
+[class~="border-b-2"] {
+  border-bottom-width: 1px !important;
+}
+[class~="border-t-2"] {
+  border-top-width: 1px !important;
+}
+[class~="divide-y-2"] > * + * {
+  border-top-width: 1px !important;
 }
