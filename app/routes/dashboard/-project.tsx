@@ -19,7 +19,23 @@ import {
   Eye,
 } from "lucide-react";
 import { ViewModeToggle, type ViewMode } from "@/components/ViewModeToggle";
+import { SortMenu, type SortOption } from "@/components/SortMenu";
 import { AssetTable, type AssetTableAsset } from "@/components/AssetTable";
+
+type AssetSortKey =
+  | "name"
+  | "size"
+  | "uploaded"
+  | "modified"
+  | "comments";
+
+const ASSET_SORT_OPTIONS: ReadonlyArray<SortOption<AssetSortKey>> = [
+  { key: "name", label: "Name (A–Z)" },
+  { key: "modified", label: "Recently modified" },
+  { key: "uploaded", label: "Recently uploaded" },
+  { key: "size", label: "Largest size" },
+  { key: "comments", label: "Most comments" },
+];
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -215,6 +231,7 @@ export default function ProjectPage({
 
   const [shareToast, setShareToast] = useState<ShareToastState | null>(null);
   const shareToastTimeoutRef = useRef<number | null>(null);
+  const [gridSort, setGridSort] = useState<AssetSortKey>("name");
 
   const shouldCanonicalize =
     !!context && !context.isCanonical && pathname !== context.canonicalPath;
@@ -380,6 +397,14 @@ export default function ProjectPage({
           "flex items-center gap-2 transition-opacity duration-300 flex-shrink-0",
           isLoadingData ? "opacity-0" : "opacity-100"
         )}>
+          {viewMode === "grid" && (
+            <SortMenu<AssetSortKey>
+              options={ASSET_SORT_OPTIONS}
+              value={gridSort}
+              onChange={setGridSort}
+              storageKey={`frame:projectGridSort:${projectId}:${folderId ?? "root"}`}
+            />
+          )}
           <ViewModeToggle value={viewMode} onChange={setViewMode} />
           {canUpload && (
             <Button
@@ -432,6 +457,7 @@ export default function ProjectPage({
             parentFolderId={folderId}
             onOpen={navigateToFolder}
             viewMode="grid"
+            sortKey={gridSort}
           />
         </div>
       )}
@@ -461,7 +487,26 @@ export default function ProjectPage({
             isLoadingData ? "opacity-0" : "opacity-100"
           )}>
             <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {videos?.map((video) => {
+              {videos
+                ?.slice()
+                .sort((a, b) => {
+                  switch (gridSort) {
+                    case "name":
+                      return a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true });
+                    case "size":
+                      return (b.fileSize ?? 0) - (a.fileSize ?? 0);
+                    case "uploaded":
+                      return b._creationTime - a._creationTime;
+                    case "modified":
+                      return (
+                        (b.lastModifiedAt ?? b._creationTime) -
+                        (a.lastModifiedAt ?? a._creationTime)
+                      );
+                    case "comments":
+                      return (b.commentCount ?? 0) - (a.commentCount ?? 0);
+                  }
+                })
+                .map((video) => {
                 const thumbnailSrc = video.thumbnailUrl?.startsWith("http")
                   ? video.thumbnailUrl
                   : undefined;

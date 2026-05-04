@@ -1,11 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronRight, Folder, Play, FileImage, FileAudio, FileText, File as FileIcon } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
 import { cn, formatBytes, formatDuration, formatRelativeTime } from "@/lib/utils";
 import { ViewModeToggle, type ViewMode } from "@/components/ViewModeToggle";
+import { SortMenu, type SortOption } from "@/components/SortMenu";
 import { AssetTable, type AssetTableAsset, type AssetTableFolder } from "@/components/AssetTable";
+
+type ShareSortKey = "name" | "size" | "modified" | "uploaded" | "comments";
+
+const SHARE_SORT_OPTIONS: ReadonlyArray<SortOption<ShareSortKey>> = [
+  { key: "name", label: "Name (A–Z)" },
+  { key: "modified", label: "Recently modified" },
+  { key: "uploaded", label: "Recently uploaded" },
+  { key: "size", label: "Largest size" },
+  { key: "comments", label: "Most comments" },
+];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,6 +80,49 @@ export function ShareBrowser({
   className,
 }: ShareBrowserProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [sortKey, setSortKey] = useState<ShareSortKey>("name");
+
+  const sortedFolders = useMemo(() => {
+    if (!data) return [];
+    return [...data.folders].sort((a, b) => {
+      switch (sortKey) {
+        case "size":
+          return (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0);
+        case "modified":
+        case "comments":
+          return (
+            (b.lastModifiedAt ?? b._creationTime) - (a.lastModifiedAt ?? a._creationTime)
+          );
+        case "uploaded":
+          return b._creationTime - a._creationTime;
+        case "name":
+        default:
+          return a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+      }
+    });
+  }, [data, sortKey]);
+
+  const sortedAssets = useMemo(() => {
+    if (!data) return [];
+    return [...data.assets].sort((a, b) => {
+      switch (sortKey) {
+        case "size":
+          return (b.fileSize ?? 0) - (a.fileSize ?? 0);
+        case "modified":
+          return (
+            (b.lastModifiedAt ?? b._creationTime) - (a.lastModifiedAt ?? a._creationTime)
+          );
+        case "uploaded":
+          return b._creationTime - a._creationTime;
+        case "comments":
+          return ((b as ShareAssetRow & { commentCount?: number }).commentCount ?? 0)
+            - ((a as ShareAssetRow & { commentCount?: number }).commentCount ?? 0);
+        case "name":
+        default:
+          return a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true });
+      }
+    });
+  }, [data, sortKey]);
 
   if (data === undefined) {
     return (
@@ -104,7 +158,16 @@ export function ShareBrowser({
           </div>
         </div>
         {(data.folders.length > 0 || data.assets.length > 0) && (
-          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <div className="flex items-center gap-2">
+            {viewMode === "grid" && (
+              <SortMenu<ShareSortKey>
+                options={SHARE_SORT_OPTIONS}
+                value={sortKey}
+                onChange={setSortKey}
+              />
+            )}
+            <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          </div>
         )}
       </header>
 
@@ -121,8 +184,8 @@ export function ShareBrowser({
         />
       ) : (
         <ShareGrid
-          folders={data.folders}
-          assets={data.assets}
+          folders={sortedFolders}
+          assets={sortedAssets}
           onOpenFolder={onOpenFolder}
           onOpenAsset={onOpenAsset}
         />

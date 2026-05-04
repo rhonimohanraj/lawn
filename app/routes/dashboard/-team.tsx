@@ -46,7 +46,39 @@ import { prewarmProject } from "./-project.data";
 import { useTeamData } from "./-team.data";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { ViewModeToggle, type ViewMode } from "@/components/ViewModeToggle";
+import { SortMenu, type SortOption } from "@/components/SortMenu";
 import { ProjectTable } from "@/components/projects/ProjectTable";
+
+type ProjectSortKey = "name" | "assets" | "size" | "created" | "modified";
+
+const PROJECT_SORT_OPTIONS: ReadonlyArray<SortOption<ProjectSortKey>> = [
+  { key: "name", label: "Name (A–Z)" },
+  { key: "assets", label: "Most assets" },
+  { key: "size", label: "Largest size" },
+  { key: "created", label: "Recently created" },
+  { key: "modified", label: "Recently modified" },
+];
+
+function compareProjects(
+  a: { name: string; assetCount: number; sizeBytes?: number; _creationTime: number; lastModifiedAt?: number },
+  b: typeof a,
+  key: ProjectSortKey,
+): number {
+  switch (key) {
+    case "name":
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+    case "assets":
+      return b.assetCount - a.assetCount;
+    case "size":
+      return (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0);
+    case "created":
+      return b._creationTime - a._creationTime;
+    case "modified":
+      return (
+        (b.lastModifiedAt ?? b._creationTime) - (a.lastModifiedAt ?? a._creationTime)
+      );
+  }
+}
 
 type TeamProjectCardProps = {
   teamSlug: string;
@@ -166,6 +198,7 @@ export default function TeamPage() {
   const [newProjectName, setNewProjectName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [projectSort, setProjectSort] = useState<ProjectSortKey>("name");
 
   // Drag-to-nest state. dragSourceId = the project being dragged. dragOverId
   // = the prospective drop target, used to highlight the row/card.
@@ -370,6 +403,14 @@ export default function TeamPage() {
             <span className="hidden sm:inline">Members</span>
           </Button>
         )}
+        {viewMode === "grid" && (
+          <SortMenu<ProjectSortKey>
+            options={PROJECT_SORT_OPTIONS}
+            value={projectSort}
+            onChange={setProjectSort}
+            storageKey={`frame:teamGridSort:${teamSlug}`}
+          />
+        )}
         <ViewModeToggle value={viewMode} onChange={setViewMode} />
         {canCreateProject && (
           <Button onClick={() => setCreateDialogOpen(true)}>
@@ -449,7 +490,10 @@ export default function TeamPage() {
             "grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 transition-opacity duration-300",
             isLoadingData ? "opacity-0" : "opacity-100"
           )}>
-            {projects?.map((project) => (
+            {projects
+              ?.slice()
+              .sort((a, b) => compareProjects(a, b, projectSort))
+              .map((project) => (
               <TeamProjectCard
                 key={project._id}
                 teamSlug={team.slug}

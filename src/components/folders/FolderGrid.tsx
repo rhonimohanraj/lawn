@@ -12,6 +12,9 @@ interface FolderGridProps {
   onOpen: (folderId: Id<"folders">) => void;
   /** "grid" = card tiles. "list" = single-column rows (matches asset list). */
   viewMode?: "grid" | "list";
+  /** Sort key — kept aligned with the parent's asset grid so folders +
+   *  assets read in the same order. Falls back to alphabetical. */
+  sortKey?: "name" | "size" | "modified" | "uploaded" | "comments";
   className?: string;
 }
 
@@ -25,14 +28,38 @@ export function FolderGrid({
   parentFolderId,
   onOpen,
   viewMode = "grid",
+  sortKey = "name",
   className,
 }: FolderGridProps) {
-  const folders = useQuery(api.folders.list, {
+  const foldersRaw = useQuery(api.folders.list, {
     projectId,
     parentFolderId,
   });
 
-  if (folders === undefined || folders.length === 0) return null;
+  if (foldersRaw === undefined || foldersRaw.length === 0) return null;
+
+  // Sort to match whatever order the parent's asset grid is using.
+  // Folders don't carry uploader / comment-count, so those keys fall
+  // back to recently-modified and alphabetical respectively.
+  const folders = [...foldersRaw].sort((a, b) => {
+    switch (sortKey) {
+      case "size":
+        return (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0);
+      case "modified":
+      case "comments":
+        return (
+          (b.lastModifiedAt ?? b._creationTime) - (a.lastModifiedAt ?? a._creationTime)
+        );
+      case "uploaded":
+        return b._creationTime - a._creationTime;
+      case "name":
+      default:
+        return a.name.localeCompare(b.name, undefined, {
+          sensitivity: "base",
+          numeric: true,
+        });
+    }
+  });
 
   if (viewMode === "list") {
     return (
