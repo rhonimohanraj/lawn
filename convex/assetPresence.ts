@@ -207,42 +207,44 @@ export const listProjectOnlineCounts = query({
     counts: v.record(v.string(), v.number()),
   }),
   handler: async (ctx, args) => {
-    // Soft-degrade on auth/access failures. This query is purely cosmetic
-    // (renders the "N watching" badge on cards) — when it throws, the
-    // page-level error boundary takes over and shows a hard error to the
-    // user. That's a bad trade for a presence indicator, so we swallow
-    // auth errors here and return empty counts. The page itself enforces
-    // its own access check via project queries.
+    // This query is PURELY COSMETIC — it powers the "N watching" badge.
+    // The dashboard must not be replaceable by an error page just because
+    // one presence room misbehaves. So we wrap the entire handler in a
+    // catch and return empty counts on any failure (auth refresh, presence
+    // component blip, validator quirk after a cross-project move, etc.).
+    // Real auth is enforced by the page's project queries elsewhere.
     try {
-      await requireProjectAccess(ctx, args.projectId, "viewer");
+      try {
+        await requireProjectAccess(ctx, args.projectId, "viewer");
+      } catch {
+        return { counts: {} };
+      }
+
+      const assets = await ctx.db
+        .query("assets")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+
+      const counts: Record<string, number> = {};
+
+      await Promise.all(
+        assets.map(async (asset) => {
+          try {
+            const onlineUsers = await presence.listRoom(
+              ctx,
+              roomIdForVideo(asset._id),
+              true,
+            );
+            counts[asset._id] = onlineUsers.length;
+          } catch {
+            counts[asset._id] = 0;
+          }
+        }),
+      );
+
+      return { counts };
     } catch {
       return { counts: {} };
     }
-
-    const assets = await ctx.db
-      .query("assets")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .collect();
-
-    const counts: Record<string, number> = {};
-
-    await Promise.all(
-      assets.map(async (asset) => {
-        try {
-          const onlineUsers = await presence.listRoom(
-            ctx,
-            roomIdForVideo(asset._id),
-            true,
-          );
-          counts[asset._id] = onlineUsers.length;
-        } catch {
-          // Per-asset presence failures are non-fatal — leave count at 0
-          // and keep the rest of the project's badges populated.
-          counts[asset._id] = 0;
-        }
-      }),
-    );
-
-    return { counts };
   },
 });
