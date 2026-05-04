@@ -27,7 +27,7 @@ import {
   Trash2,
   Users,
   ArrowRight,
-  CreditCard,
+  Settings as SettingsIcon,
   Link as LinkIcon,
   FolderInput,
 } from "lucide-react";
@@ -353,11 +353,12 @@ export default function TeamPage() {
       <DashboardHeader paths={[{ label: team?.slug ?? "team" }]}>
         {canAccessBilling && team && (
           <Button
-            variant="outline"
+            variant="ghost"
+            size="icon"
             onClick={() => navigate({ to: billingPath ?? teamSettingsPath(team.slug) })}
+            title="Settings"
           >
-            <CreditCard className="sm:mr-1.5 h-4 w-4" />
-            <span className="hidden sm:inline">Billing</span>
+            <SettingsIcon className="h-4 w-4" />
           </Button>
         )}
         {canManageMembers && (
@@ -559,19 +560,17 @@ export default function TeamPage() {
           if (!open && !isNesting) setPendingNest(null);
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Nest <span className="font-mono">{pendingNest?.sourceName}</span> inside{" "}
-              <span className="font-mono">{pendingNest?.targetName}</span>?
+              Nest {pendingNest?.sourceName} inside {pendingNest?.targetName}?
             </DialogTitle>
-            <DialogDescription>
-              All assets and folders inside{" "}
-              <strong>{pendingNest?.sourceName}</strong> will be moved into a new
-              folder called <strong>{pendingNest?.sourceName}</strong> at the top
-              of <strong>{pendingNest?.targetName}</strong>. The original{" "}
-              <strong>{pendingNest?.sourceName}</strong> project will be deleted
-              once the move completes.
+            <DialogDescription className="leading-relaxed">
+              All assets and folders inside <strong>{pendingNest?.sourceName}</strong>{" "}
+              will be moved into a new folder called{" "}
+              <strong>{pendingNest?.sourceName}</strong> at the top of{" "}
+              <strong>{pendingNest?.targetName}</strong>. The original project will
+              be deleted once the move completes.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -587,8 +586,8 @@ export default function TeamPage() {
               onClick={() => void handleConfirmNest()}
               disabled={isNesting}
             >
-              <FolderInput className="mr-2 h-4 w-4" />
-              {isNesting ? "Nesting..." : "Nest project"}
+              <FolderInput className="h-4 w-4" />
+              {isNesting ? "Nesting…" : "Nest project"}
             </Button>
           </DialogFooter>
         </DialogContent>
