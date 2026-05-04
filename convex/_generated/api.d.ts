@@ -27,6 +27,7 @@ import type * as http from "../http.js";
 import type * as legacyId from "../legacyId.js";
 import type * as migration from "../migration.js";
 import type * as migrationActions from "../migrationActions.js";
+import type * as migrationCleanup from "../migrationCleanup.js";
 import type * as migrationStatus from "../migrationStatus.js";
 import type * as mux from "../mux.js";
 import type * as muxActions from "../muxActions.js";
@@ -67,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   legacyId: typeof legacyId;
   migration: typeof migration;
   migrationActions: typeof migrationActions;
+  migrationCleanup: typeof migrationCleanup;
   migrationStatus: typeof migrationStatus;
   mux: typeof mux;
   muxActions: typeof muxActions;

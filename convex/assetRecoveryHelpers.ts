@@ -95,7 +95,7 @@ export const repairAssetS3Key = internalMutation({
  *  alongside the project + folder it currently lives in. Used by
  *  scripts/check-alignment.ts to compare current Convex placement
  *  against what the lawn-migrate state files say Frame.io structure
- *  should be. */
+ *  should be. Also exposes status/fileSize for stub-detection. */
 export const listAssetPlacements = internalQuery({
   args: {},
   handler: async (ctx): Promise<
@@ -107,6 +107,11 @@ export const listAssetPlacements = internalQuery({
       projectName: string;
       folderId: string | null;
       folderPath: string;
+      status: string;
+      fileSize: number | null;
+      contentType: string | null;
+      uploadedByClerkId: string;
+      creationTime: number;
     }>
   > => {
     const all = await ctx.db.query("assets").collect();
@@ -147,6 +152,11 @@ export const listAssetPlacements = internalQuery({
       projectName: string;
       folderId: string | null;
       folderPath: string;
+      status: string;
+      fileSize: number | null;
+      contentType: string | null;
+      uploadedByClerkId: string;
+      creationTime: number;
     }> = [];
 
     for (const a of all) {
@@ -158,6 +168,11 @@ export const listAssetPlacements = internalQuery({
         projectName: await projectName(a.projectId),
         folderId: (a.folderId as string | undefined) ?? null,
         folderPath: await folderPath(a.folderId),
+        status: a.status,
+        fileSize: a.fileSize ?? null,
+        contentType: a.contentType ?? null,
+        uploadedByClerkId: a.uploadedByClerkId,
+        creationTime: a._creationTime,
       });
     }
     return out;
