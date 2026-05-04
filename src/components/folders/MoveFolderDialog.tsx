@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Folder,
   FolderInput,
+  Home,
   Search,
   Check,
 } from "lucide-react";
@@ -238,7 +239,9 @@ export function MoveFolderDialog({
             Move {folderName ?? "folder"}
           </DialogTitle>
           <DialogDescription>
-            Pick where this folder should live. Reversible — you can always move it back.
+            Pick where this folder should live. Click a project name to drop it
+            at that project's home (top level), or expand a project to nest it
+            inside an existing folder. Reversible — you can always move it back.
           </DialogDescription>
         </DialogHeader>
 
@@ -424,7 +427,11 @@ function TreeNode({
         )}
 
         <span className="inline-flex items-center justify-center h-6 w-6 rounded bg-[#e8e8e0] text-[#2d5a2d] shrink-0">
-          <Folder className="h-3 w-3" />
+          {node.kind === "project-root" ? (
+            <Home className="h-3 w-3" />
+          ) : (
+            <Folder className="h-3 w-3" />
+          )}
         </span>
 
         <span
@@ -434,6 +441,11 @@ function TreeNode({
           )}
         >
           {renderName()}
+          {node.kind === "project-root" && (
+            <span className="ml-2 text-[10px] font-mono uppercase tracking-wider text-[#888]">
+              Home
+            </span>
+          )}
         </span>
 
         {node.isCurrent && (
