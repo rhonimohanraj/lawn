@@ -91,6 +91,7 @@ type TeamProjectCardProps = {
   onOpen: () => void;
   onDelete: (projectId: Id<"projects">) => void;
   onShare: (projectId: Id<"projects">) => void;
+  onRequestNest: (project: { _id: Id<"projects">; name: string }) => void;
   /** HTML5 drag/drop handlers wired by the parent so the same logic powers
    *  both grid + table views. */
   dragHandlers: React.HTMLAttributes<HTMLDivElement>;
@@ -104,6 +105,7 @@ function TeamProjectCard({
   onOpen,
   onDelete,
   onShare,
+  onRequestNest,
   dragHandlers,
   isDragOver,
 }: TeamProjectCardProps) {
@@ -156,6 +158,15 @@ function TeamProjectCard({
               >
                 <LinkIcon className="mr-2 h-4 w-4" />
                 Share project
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRequestNest({ _id: project._id, name: project.name });
+                }}
+              >
+                <FolderInput className="mr-2 h-4 w-4" />
+                Move into another project…
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-[#dc2626] focus:text-[#dc2626]"
@@ -214,6 +225,13 @@ export default function TeamPage() {
     targetName: string;
   } | null>(null);
   const [isNesting, setIsNesting] = useState(false);
+
+  // Kebab-driven nest: user picked "Move into another project" but hasn't
+  // chosen the target yet. Pops a project-picker dialog.
+  const [nestPickerSource, setNestPickerSource] = useState<{
+    _id: Id<"projects">;
+    name: string;
+  } | null>(null);
   const [shareToast, setShareToast] = useState<string | null>(null);
   const shareToastTimeoutRef = useRef<number | null>(null);
 
@@ -504,6 +522,7 @@ export default function TeamPage() {
                 }
                 onDelete={handleDeleteProject}
                 onShare={handleShareProject}
+                onRequestNest={(p) => setNestPickerSource(p)}
                 dragHandlers={dragHandlersFor(project)}
                 isDragOver={dragOverId === project._id}
               />
@@ -531,6 +550,14 @@ export default function TeamPage() {
                         <DropdownMenuItem onClick={() => void handleShareProject(project._id)}>
                           <LinkIcon className="mr-2 h-4 w-4" />
                           Share project
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            setNestPickerSource({ _id: project._id, name: project.name })
+                          }
+                        >
+                          <FolderInput className="mr-2 h-4 w-4" />
+                          Move into another project…
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-[#dc2626] focus:text-[#dc2626]"
@@ -632,6 +659,72 @@ export default function TeamPage() {
             >
               <FolderInput className="h-4 w-4" />
               {isNesting ? "Nesting…" : "Nest project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Kebab-driven nest picker. The drag-drop confirmation dialog
+          (above) handles confirming a chosen target; this one lets the
+          user pick the target in the first place. */}
+      <Dialog
+        open={nestPickerSource !== null}
+        onOpenChange={(open) => {
+          if (!open) setNestPickerSource(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Move {nestPickerSource?.name} into…</DialogTitle>
+            <DialogDescription>
+              Pick a project to move <strong>{nestPickerSource?.name}</strong> into.
+              All its assets and folders will be nested as a top-level folder
+              there.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 overflow-y-auto rounded-md border border-[#1a1a1a]/15 divide-y divide-[#1a1a1a]/10">
+            {(projects ?? [])
+              .filter((p) => p._id !== nestPickerSource?._id)
+              .slice()
+              .sort((a, b) =>
+                a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }),
+              )
+              .map((p) => (
+                <button
+                  key={p._id}
+                  type="button"
+                  onClick={() => {
+                    if (!nestPickerSource) return;
+                    setPendingNest({
+                      sourceId: nestPickerSource._id,
+                      sourceName: nestPickerSource.name,
+                      targetId: p._id,
+                      targetName: p.name,
+                    });
+                    setNestPickerSource(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-[#e8e8e0] transition-colors"
+                >
+                  <span className="inline-flex items-center justify-center h-6 w-6 rounded bg-[#e8e8e0] text-[#2d5a2d] shrink-0">
+                    <Folder className="h-3 w-3" />
+                  </span>
+                  <span className="flex-1 min-w-0 text-sm text-[#1a1a1a] truncate">
+                    {p.name}
+                  </span>
+                  <span className="text-[11px] font-mono text-[#888] shrink-0">
+                    {p.assetCount} asset{p.assetCount !== 1 ? "s" : ""}
+                  </span>
+                </button>
+              ))}
+            {(projects ?? []).filter((p) => p._id !== nestPickerSource?._id).length === 0 && (
+              <div className="px-3 py-6 text-sm text-[#888] text-center">
+                No other projects to move into yet.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNestPickerSource(null)}>
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>

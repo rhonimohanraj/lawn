@@ -207,7 +207,17 @@ export const listProjectOnlineCounts = query({
     counts: v.record(v.string(), v.number()),
   }),
   handler: async (ctx, args) => {
-    await requireProjectAccess(ctx, args.projectId, "viewer");
+    // Soft-degrade on auth/access failures. This query is purely cosmetic
+    // (renders the "N watching" badge on cards) — when it throws, the
+    // page-level error boundary takes over and shows a hard error to the
+    // user. That's a bad trade for a presence indicator, so we swallow
+    // auth errors here and return empty counts. The page itself enforces
+    // its own access check via project queries.
+    try {
+      await requireProjectAccess(ctx, args.projectId, "viewer");
+    } catch {
+      return { counts: {} };
+    }
 
     const assets = await ctx.db
       .query("assets")
@@ -218,12 +228,18 @@ export const listProjectOnlineCounts = query({
 
     await Promise.all(
       assets.map(async (asset) => {
-        const onlineUsers = await presence.listRoom(
-          ctx,
-          roomIdForVideo(asset._id),
-          true,
-        );
-        counts[asset._id] = onlineUsers.length;
+        try {
+          const onlineUsers = await presence.listRoom(
+            ctx,
+            roomIdForVideo(asset._id),
+            true,
+          );
+          counts[asset._id] = onlineUsers.length;
+        } catch {
+          // Per-asset presence failures are non-fatal — leave count at 0
+          // and keep the rest of the project's badges populated.
+          counts[asset._id] = 0;
+        }
       }),
     );
 
