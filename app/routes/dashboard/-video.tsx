@@ -232,7 +232,12 @@ export default function VideoPage() {
     }
   };
 
-  if (context === undefined || video === undefined || shouldCanonicalize) {
+  // Order matters here. The asset/video query is "skip" until
+  // resolveContext returns the canonical id — so video being undefined
+  // can mean either "still loading" OR "skipped because asset doesn't
+  // exist". Resolve `context` first; only then decide whether we're
+  // still waiting on video or it's actually gone.
+  if (context === undefined || shouldCanonicalize) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-[#888]">Loading...</div>
@@ -240,10 +245,44 @@ export default function VideoPage() {
     );
   }
 
-  if (context === null || video === null || !resolvedProjectId || !resolvedVideoId) {
+  if (context === null) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+        <div className="text-[#1a1a1a] font-semibold">Video not found</div>
+        <div className="text-sm text-[#888] max-w-md">
+          This video may have been deleted, moved out of your reach, or never
+          existed. The URL points at an asset that's not in the database.
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate({ to: teamHomePath(resolvedTeamSlug) })}
+          className="text-sm text-[#2d5a2d] hover:text-[#1a1a1a] underline underline-offset-4"
+        >
+          Back to projects
+        </button>
+      </div>
+    );
+  }
+
+  if (resolvedVideoId && video === undefined) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-[#888]">Video not found</div>
+        <div className="text-[#888]">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!resolvedProjectId || !resolvedVideoId || video === null) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+        <div className="text-[#1a1a1a] font-semibold">Video not found</div>
+        <button
+          type="button"
+          onClick={() => navigate({ to: teamHomePath(resolvedTeamSlug) })}
+          className="text-sm text-[#2d5a2d] hover:text-[#1a1a1a] underline underline-offset-4"
+        >
+          Back to projects
+        </button>
       </div>
     );
   }
