@@ -48,10 +48,13 @@ import type { Id } from "./_generated/dataModel";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** B2 keys look like `assets/<assetId>/<filename>`. Extract the asset id;
- *  return null for keys that don't match (legacy paths, unrelated files). */
+/** B2 keys look like `assets/<assetId>/<filename>` (current) or
+ *  `videos/<assetId>/<filename>` (pre-rename, still abundant). Either
+ *  prefix carries the same asset ids — the rename was client-side only,
+ *  so a "videos/<id>/X" object is the same file the Convex row's s3Key
+ *  *should* have pointed at. */
 function parseAssetIdFromKey(key: string): string | null {
-  const match = key.match(/^assets\/([^/]+)\//);
+  const match = key.match(/^(?:assets|videos)\/([^/]+)\//);
   return match ? match[1] : null;
 }
 
@@ -75,7 +78,8 @@ export const countOrphans = internalAction({
   returns: v.object({
     bucket: v.string(),
     totalKeys: v.number(),
-    parseableKeys: v.number(),
+    underAssetsPrefix: v.number(),
+    underVideosPrefix: v.number(),
     distinctAssetIds: v.number(),
     existingAssetIds: v.number(),
     orphanAssetIds: v.number(),
@@ -84,14 +88,18 @@ export const countOrphans = internalAction({
     const s3 = getS3Client();
     const seenAssetIds = new Set<string>();
     let totalKeys = 0;
-    let parseableKeys = 0;
+    let underAssetsPrefix = 0;
+    let underVideosPrefix = 0;
     let continuationToken: string | undefined = undefined;
 
+    // Walk the WHOLE bucket — we can't assume a single prefix because the
+    // app changed its convention from `videos/` to `assets/` partway
+    // through the videos→assets rename. Many real B2 objects still live
+    // under videos/<id>/ even though Convex rows reference assets/<id>/.
     do {
       const out: any = await s3.send(
         new ListObjectsV2Command({
           Bucket: BUCKET_NAME,
-          Prefix: "assets/",
           ContinuationToken: continuationToken,
           MaxKeys: 1000,
         }),
@@ -100,11 +108,11 @@ export const countOrphans = internalAction({
         const key = obj.Key;
         if (!key) continue;
         totalKeys++;
-        const id = parseAssetIdFromKey(key);
-        if (id) {
-          parseableKeys++;
-          seenAssetIds.add(id);
-        }
+        if (key.startsWith("assets/")) underAssetsPrefix++;
+        if (key.startsWith("videos/")) underVideosPrefix++;
+        // Either prefix can carry asset IDs (rename was client-side only).
+        const m = key.match(/^(?:assets|videos)\/([^/]+)\//);
+        if (m) seenAssetIds.add(m[1]);
       }
       continuationToken = out.IsTruncated ? out.NextContinuationToken : undefined;
     } while (continuationToken);
@@ -123,11 +131,89 @@ export const countOrphans = internalAction({
     return {
       bucket: BUCKET_NAME,
       totalKeys,
-      parseableKeys,
+      underAssetsPrefix,
+      underVideosPrefix,
       distinctAssetIds: seenAssetIds.size,
       existingAssetIds: existing.length,
       orphanAssetIds: orphanCount,
     };
+  },
+});
+
+/**
+ * Repair Convex `assets` rows whose `s3Key` points at a non-existent
+ * B2 location. The dominant case after the videos→assets rename is
+ * rows that say `assets/<id>/foo.mp4` while B2 still has the same
+ * file at `videos/<id>/foo.mp4`. Walks B2 once, parses the asset id
+ * out of each key, and patches the row's `s3Key` to the actual key
+ * if a row with that id exists and currently disagrees.
+ *
+ * Runs in node mode for the AWS XML parser. Idempotent — re-running
+ * after a clean pass produces 0 patches.
+ */
+export const fixBrokenS3Keys = internalAction({
+  args: {},
+  returns: v.object({
+    bucketKeys: v.number(),
+    matchedConvexRows: v.number(),
+    patched: v.number(),
+    alreadyCorrect: v.number(),
+  }),
+  handler: async (ctx) => {
+    const s3 = getS3Client();
+    const existing: string[] = await ctx.runQuery(
+      internal.assetRecoveryHelpers.getExistingAssetIds,
+      {},
+    );
+    const existingSet = new Set(existing);
+
+    // Map asset id → preferred B2 key. When a single asset has multiple
+    // objects (original + thumbnail + sidecar files), prefer the largest
+    // since it's almost always the source media that downloads care about.
+    type Candidate = { key: string; size: number };
+    const bestKeyByAssetId = new Map<string, Candidate>();
+
+    let bucketKeys = 0;
+    let continuationToken: string | undefined = undefined;
+
+    do {
+      const out: any = await s3.send(
+        new ListObjectsV2Command({
+          Bucket: BUCKET_NAME,
+          ContinuationToken: continuationToken,
+          MaxKeys: 1000,
+        }),
+      );
+      for (const obj of out.Contents ?? []) {
+        const key = obj.Key as string | undefined;
+        const size = (obj.Size as number | undefined) ?? 0;
+        if (!key) continue;
+        bucketKeys++;
+        const id = parseAssetIdFromKey(key);
+        if (!id) continue;
+        if (!existingSet.has(id)) continue;
+        const prev = bestKeyByAssetId.get(id);
+        if (!prev || size > prev.size) {
+          bestKeyByAssetId.set(id, { key, size });
+        }
+      }
+      continuationToken = out.IsTruncated ? out.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    const matchedConvexRows = bestKeyByAssetId.size;
+
+    let patched = 0;
+    let alreadyCorrect = 0;
+    for (const [assetId, candidate] of bestKeyByAssetId) {
+      const result: any = await ctx.runMutation(
+        internal.assetRecoveryHelpers.repairAssetS3Key,
+        { assetId: assetId as Id<"assets">, newS3Key: candidate.key },
+      );
+      if (result.patched) patched++;
+      else if (result.reason === "noop") alreadyCorrect++;
+    }
+
+    return { bucketKeys, matchedConvexRows, patched, alreadyCorrect };
   },
 });
 
@@ -167,6 +253,16 @@ export const recoverOrphans = internalAction({
     );
     const existingSet = new Set(existing);
 
+    // Skip B2 keys that any Convex row already references — fixes the
+    // "infinite same-50-orphans loop" we ran into the first time. The
+    // _id check alone wasn't enough because db.insert generates fresh
+    // ids that don't match the original parsed asset id.
+    const existingS3Keys: string[] = await ctx.runQuery(
+      internal.assetRecoveryHelpers.getExistingS3Keys,
+      {},
+    );
+    const existingS3KeySet = new Set(existingS3Keys);
+
     // Walk B2 again, collect (assetId, key) pairs for orphans only —
     // first occurrence of each id wins, since one asset can have
     // multiple objects (original + thumbnails). Prefer the largest
@@ -180,7 +276,6 @@ export const recoverOrphans = internalAction({
       const out: any = await s3.send(
         new ListObjectsV2Command({
           Bucket: BUCKET_NAME,
-          Prefix: "assets/",
           ContinuationToken: continuationToken,
           MaxKeys: 1000,
         }),
@@ -192,6 +287,11 @@ export const recoverOrphans = internalAction({
           ? new Date(obj.LastModified as Date).getTime()
           : 0;
         if (!key) continue;
+        // Already-recovered: skip. Belt + braces covers both the
+        // "old asset id matches an existing row" case (existingSet)
+        // and the "we already gave this exact B2 key a new row" case
+        // (existingS3KeySet) — the latter is what bit us first time.
+        if (existingS3KeySet.has(key)) continue;
         const id = parseAssetIdFromKey(key);
         if (!id || existingSet.has(id)) continue;
         const prev = orphanByAssetId.get(id);
