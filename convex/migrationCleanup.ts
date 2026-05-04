@@ -185,6 +185,22 @@ export const phase4PatchFailedWithContent = internalMutation({
   },
 });
 
+/** Delete a specific asset row by id. Used for one-off cross-folder
+ *  dup decisions where the user picks which row to drop. */
+export const deleteAssetById = internalMutation({
+  args: { assetId: v.id("assets") },
+  handler: async (ctx, args) => {
+    const a = await ctx.db.get(args.assetId);
+    if (!a) return { deleted: false, reason: "missing" } as const;
+    await ctx.db.delete(args.assetId);
+    return {
+      deleted: true,
+      title: a.title,
+      s3Key: a.s3Key ?? null,
+    } as const;
+  },
+});
+
 /** Quick stats for the four cleanup phases. */
 export const cleanupStatus = internalMutation({
   args: {},
