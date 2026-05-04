@@ -50,3 +50,6 @@ next-env.d.ts
 
 # lawn-migrate one-shot completion sentinel — local signal, never committed
 .lawn-migrate-done
+
+# Local Convex snapshot parachutes (kept out of git — too big and one-time use)
+.restore-checkpoint-*/
