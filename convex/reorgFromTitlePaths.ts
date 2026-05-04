@@ -93,7 +93,13 @@ async function ensureFolder(
 export const reorgByTitlePrefix = internalMutation({
   args: {
     projectId: v.id("projects"),
-    titlePrefix: v.string(),
+    /** Filter by title prefix. Empty / omitted = match every path-titled asset. */
+    titlePrefix: v.optional(v.string()),
+    /** Only reorganize assets currently in this folder. Undefined = match
+     *  any folder in the project. Use this to scope the reorg to a single
+     *  folder when the project has assets at multiple locations that
+     *  shouldn't all be touched. */
+    sourceFolderId: v.optional(v.id("folders")),
     /** New tree's root folder. Undefined = project root. */
     destFolderId: v.optional(v.id("folders")),
     actorClerkId: v.string(),
@@ -104,6 +110,7 @@ export const reorgByTitlePrefix = internalMutation({
   handler: async (ctx, args) => {
     const limit = args.limit ?? DEFAULT_LIMIT;
     const dryRun = args.dryRun ?? false;
+    const titlePrefix = args.titlePrefix ?? "";
 
     const all = await ctx.db
       .query("assets")
@@ -112,11 +119,14 @@ export const reorgByTitlePrefix = internalMutation({
 
     const candidates = all.filter(
       (a) =>
-        a.title.startsWith(args.titlePrefix) &&
+        (titlePrefix === "" || a.title.startsWith(titlePrefix)) &&
         a.title.includes("/") &&
         // Already-reorged assets won't have "/" in title; this guards
         // against re-running after a partial pass.
-        a.title.length > args.titlePrefix.length,
+        a.title.length > titlePrefix.length &&
+        // sourceFolderId filter: only touch assets currently in this folder.
+        (args.sourceFolderId === undefined ||
+          a.folderId === args.sourceFolderId),
     );
 
     if (dryRun) {
