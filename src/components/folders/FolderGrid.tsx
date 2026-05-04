@@ -3,7 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { Id } from "@convex/_generated/dataModel";
-import { Folder, MoreVertical, FolderInput } from "lucide-react";
+import { Folder, MoreVertical, FolderInput, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -23,6 +23,8 @@ interface FolderGridProps {
   sortKey?: "name" | "size" | "modified" | "uploaded" | "comments";
   /** When provided, shows a kebab on each folder with "Move to…". */
   onRequestMove?: (folder: { _id: Id<"folders">; name: string }) => void;
+  /** When provided, adds a "Promote to top-level project" kebab item. */
+  onRequestPromote?: (folder: { _id: Id<"folders">; name: string }) => void;
   className?: string;
 }
 
@@ -38,6 +40,7 @@ export function FolderGrid({
   viewMode = "grid",
   sortKey = "name",
   onRequestMove,
+  onRequestPromote,
   className,
 }: FolderGridProps) {
   const foldersRaw = useQuery(api.folders.list, {
@@ -104,7 +107,7 @@ export function FolderGrid({
             </span>
             <span className="font-medium truncate">{folder.name}</span>
           </button>
-          {onRequestMove && (
+          {(onRequestMove || onRequestPromote) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -117,12 +120,22 @@ export function FolderGrid({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => onRequestMove({ _id: folder._id, name: folder.name })}
-                >
-                  <FolderInput className="mr-2 h-4 w-4" />
-                  Move to…
-                </DropdownMenuItem>
+                {onRequestMove && (
+                  <DropdownMenuItem
+                    onClick={() => onRequestMove({ _id: folder._id, name: folder.name })}
+                  >
+                    <FolderInput className="mr-2 h-4 w-4" />
+                    Move to…
+                  </DropdownMenuItem>
+                )}
+                {onRequestPromote && (
+                  <DropdownMenuItem
+                    onClick={() => onRequestPromote({ _id: folder._id, name: folder.name })}
+                  >
+                    <Home className="mr-2 h-4 w-4" />
+                    Make top-level project
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}

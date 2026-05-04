@@ -15,7 +15,7 @@ import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { requireProjectAccess } from "./auth";
+import { requireFolderAccess, requireProjectAccess } from "./auth";
 
 const MAX_FOLDER_NAME = 200;
 
@@ -209,6 +209,101 @@ export const nestProjectIntoProject = mutation({
 
     return {
       targetFolderId,
+      movedAssets: rootAssets.length,
+      movedRootFolders: rootFolders.length,
+    };
+  },
+});
+
+/**
+ * Promote a nested folder to its own top-level project on the dashboard.
+ *
+ * Inverse of nestProjectIntoProject. Creates a new project under the
+ * source folder's team, then re-points the folder's contents (assets +
+ * subfolders) to the new project. The source folder row is deleted —
+ * its assets land at the new project's root, its subfolders become the
+ * new project's top-level folders.
+ *
+ * Auth: caller needs admin on the source folder (matches projects.create
+ * which requires team-member; we use "admin" here because the operation
+ * is destructive against the source folder's parent project).
+ *
+ * Reversibility: nestProjectIntoProject takes the result back the other
+ * way, so promote↔nest is symmetric.
+ */
+export const promoteFolderToProject = mutation({
+  args: {
+    folderId: v.id("folders"),
+    /** Defaults to the folder's current name. */
+    projectName: v.optional(v.string()),
+  },
+  returns: v.object({
+    newProjectId: v.id("projects"),
+    movedAssets: v.number(),
+    movedRootFolders: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { folder } = await requireFolderAccess(ctx, args.folderId, "admin");
+
+    const sourceProject = await ctx.db.get(folder.projectId);
+    if (!sourceProject) {
+      throw new Error("Source project not found.");
+    }
+
+    const newName = (args.projectName ?? folder.name).trim();
+    if (!newName) throw new Error("Project name cannot be empty.");
+
+    // Avoid creating a duplicate project name within the team. The team
+    // can have many projects, so this is just a friendly guard — the
+    // schema doesn't enforce uniqueness.
+    const siblings = await ctx.db
+      .query("projects")
+      .withIndex("by_team", (q) => q.eq("teamId", sourceProject.teamId))
+      .collect();
+    if (siblings.some((p) => p.name === newName)) {
+      throw new Error(
+        `A project named "${newName}" already exists in this team. Pick a different name first.`,
+      );
+    }
+
+    // 1. Create the new project.
+    const newProjectId: Id<"projects"> = await ctx.db.insert("projects", {
+      teamId: sourceProject.teamId,
+      name: newName,
+      description: undefined,
+    });
+
+    // 2. Re-parent the folder's direct child assets → new project root.
+    const rootAssets = await ctx.db
+      .query("assets")
+      .withIndex("by_folder", (q) => q.eq("folderId", args.folderId))
+      .collect();
+    for (const asset of rootAssets) {
+      await ctx.db.patch(asset._id, {
+        projectId: newProjectId,
+        folderId: undefined,
+      });
+    }
+
+    // 3. Re-parent the folder's direct child folders → new project's top
+    //    level. Then rewrite projectId on each subtree.
+    const rootFolders = await ctx.db
+      .query("folders")
+      .withIndex("by_parent", (q) => q.eq("parentFolderId", args.folderId))
+      .collect();
+    for (const child of rootFolders) {
+      await ctx.db.patch(child._id, {
+        projectId: newProjectId,
+        parentFolderId: undefined,
+      });
+      await rewriteSubtreeProjectId(ctx, child._id, newProjectId);
+    }
+
+    // 4. Delete the now-empty source folder.
+    await ctx.db.delete(args.folderId);
+
+    return {
+      newProjectId,
       movedAssets: rootAssets.length,
       movedRootFolders: rootFolders.length,
     };

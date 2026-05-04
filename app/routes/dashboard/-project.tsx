@@ -44,7 +44,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Id } from "@convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { teamHomePath, videoPath } from "@/lib/routes";
+import { projectPath, teamHomePath, videoPath } from "@/lib/routes";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { prefetchHlsRuntime, prefetchMuxPlaybackManifest } from "@/lib/muxPlayback";
 import { useRoutePrewarmIntent } from "@/lib/useRoutePrewarmIntent";
 import {
@@ -245,6 +254,17 @@ export default function ProjectPage({
     name: string;
   } | null>(null);
 
+  const [pendingPromote, setPendingPromote] = useState<{
+    _id: Id<"folders">;
+    name: string;
+  } | null>(null);
+  const [promoteName, setPromoteName] = useState("");
+  const [isPromoting, setIsPromoting] = useState(false);
+  const [promoteError, setPromoteError] = useState<string | null>(null);
+  const promoteFolderToProject = useMutation(api.projectActions.promoteFolderToProject);
+  // handleConfirmPromote is defined after showShareToast so its dep
+  // closure picks up the toast helper without TDZ issues.
+
   const shouldCanonicalize =
     !!context && !context.isCanonical && pathname !== context.canonicalPath;
   const prewarmTeamIntentHandlers = useRoutePrewarmIntent(() =>
@@ -324,6 +344,37 @@ export default function ProjectPage({
       shareToastTimeoutRef.current = null;
     }, 2400);
   }, []);
+
+  const handleConfirmPromote = useCallback(async () => {
+    if (!pendingPromote) return;
+    setPromoteError(null);
+    setIsPromoting(true);
+    try {
+      const result = await promoteFolderToProject({
+        folderId: pendingPromote._id,
+        projectName: promoteName.trim() || undefined,
+      });
+      showShareToast(
+        "success",
+        `${promoteName.trim() || pendingPromote.name} is now a top-level project`,
+      );
+      setPendingPromote(null);
+      navigate({
+        to: projectPath(resolvedTeamSlug, result.newProjectId),
+      });
+    } catch (e) {
+      setPromoteError(e instanceof Error ? e.message : "Failed to promote folder");
+    } finally {
+      setIsPromoting(false);
+    }
+  }, [
+    pendingPromote,
+    promoteName,
+    promoteFolderToProject,
+    showShareToast,
+    navigate,
+    resolvedTeamSlug,
+  ]);
 
   const handleShareScope = useCallback(async () => {
     try {
@@ -471,6 +522,15 @@ export default function ProjectPage({
             viewMode="grid"
             sortKey={gridSort}
             onRequestMove={canUpload ? (f) => setPendingMove(f) : undefined}
+            onRequestPromote={
+              canUpload
+                ? (f) => {
+                    setPromoteName(f.name);
+                    setPromoteError(null);
+                    setPendingPromote(f);
+                  }
+                : undefined
+            }
           />
         </div>
       )}
@@ -497,6 +557,58 @@ export default function ProjectPage({
           showShareToast("success", `Moved to ${info.targetLabel.split(" / ").slice(-1)[0]}`);
         }}
       />
+
+      <Dialog
+        open={pendingPromote !== null}
+        onOpenChange={(open) => {
+          if (!open && !isPromoting) setPendingPromote(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Promote {pendingPromote?.name} to a top-level project?
+            </DialogTitle>
+            <DialogDescription>
+              Move <strong>{pendingPromote?.name}</strong>'s contents out of
+              this project and onto the dashboard as its own top-level project.
+              All assets and subfolders inside come with it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label
+              htmlFor="promote-name"
+              className="text-xs font-mono uppercase tracking-wider text-[#888]"
+            >
+              New project name
+            </label>
+            <Input
+              id="promote-name"
+              value={promoteName}
+              onChange={(e) => setPromoteName(e.target.value)}
+              placeholder={pendingPromote?.name ?? ""}
+              autoFocus
+            />
+          </div>
+          {promoteError && <p className="text-sm text-[#dc2626]">{promoteError}</p>}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingPromote(null)}
+              disabled={isPromoting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleConfirmPromote()}
+              disabled={isPromoting || !promoteName.trim()}
+            >
+              {isPromoting ? "Promoting…" : "Promote to project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
