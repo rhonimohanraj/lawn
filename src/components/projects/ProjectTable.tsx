@@ -25,6 +25,12 @@ interface ProjectTableProps {
   ) => Record<string, (e: React.SyntheticEvent) => void> | undefined;
   /** Hover-revealed actions slot (kebab menu). */
   renderActions?: (project: ProjectTableRow) => ReactNode;
+  /** HTML5 drag/drop handlers per row, for drag-to-nest into another row.
+   *  When provided, every row is draggable; the parent decides which row is
+   *  currently a hover-target via `dragOver`. */
+  rowDragHandlers?: (project: ProjectTableRow) => {
+    dragOver?: boolean;
+  } & Omit<React.HTMLAttributes<HTMLElement>, "draggable">;
   sortStorageKey?: string;
   className?: string;
 }
@@ -133,6 +139,7 @@ export function ProjectTable({
   onOpen,
   prewarmHandlers,
   renderActions,
+  rowDragHandlers,
   sortStorageKey,
   className,
 }: ProjectTableProps) {
@@ -197,12 +204,19 @@ export function ProjectTable({
           <tbody>
             {rows.map((project) => {
               const handlers = prewarmHandlers?.(project._id);
+              const drag = rowDragHandlers?.(project);
+              const { dragOver, ...dragDomHandlers } = drag ?? {};
               return (
                 <tr
                   key={project._id}
                   onClick={() => onOpen(project._id)}
-                  className="group border-t border-[#1a1a1a]/10 hover:bg-[#e8e8e0] cursor-pointer transition-colors"
+                  draggable={drag !== undefined}
+                  className={cn(
+                    "group border-t border-[#1a1a1a]/10 hover:bg-[#e8e8e0] cursor-pointer transition-colors",
+                    dragOver && "bg-[#7cb87c]/15 outline outline-2 outline-[#2d5a2d]",
+                  )}
                   {...handlers}
+                  {...dragDomHandlers}
                 >
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2.5 min-w-0">

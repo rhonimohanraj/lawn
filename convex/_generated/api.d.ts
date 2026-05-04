@@ -27,6 +27,7 @@ import type * as migrationActions from "../migrationActions.js";
 import type * as migrationStatus from "../migrationStatus.js";
 import type * as mux from "../mux.js";
 import type * as muxActions from "../muxActions.js";
+import type * as projectActions from "../projectActions.js";
 import type * as projects from "../projects.js";
 import type * as restructureFrameio from "../restructureFrameio.js";
 import type * as s3 from "../s3.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   migrationStatus: typeof migrationStatus;
   mux: typeof mux;
   muxActions: typeof muxActions;
+  projectActions: typeof projectActions;
   projects: typeof projects;
   restructureFrameio: typeof restructureFrameio;
   s3: typeof s3;

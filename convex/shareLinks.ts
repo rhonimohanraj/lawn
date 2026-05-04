@@ -504,19 +504,16 @@ export const browseUnderShareGrant = query({
       cursor = f.parentFolderId;
     }
 
-    return {
-      parentFolderId: resolvedParentFolderId ?? null,
-      crumb,
-      folders: folders.map((f) => ({
-        _id: f._id,
-        _creationTime: f._creationTime,
-        name: f.name,
-        sizeBytes: f.sizeBytes,
-        lastModifiedAt: f.lastModifiedAt,
-      })),
-      assets: assets
-        .filter((a) => a.status === "ready")
-        .map((a) => ({
+    // Per-asset comment counts. One indexed query per asset is fine for
+    // typical folder sizes; if this grows hot we can cache on the asset row.
+    const readyAssets = assets.filter((a) => a.status === "ready");
+    const assetsWithCounts = await Promise.all(
+      readyAssets.map(async (a) => {
+        const comments = await ctx.db
+          .query("comments")
+          .withIndex("by_asset", (q) => q.eq("assetId", a._id))
+          .collect();
+        return {
           _id: a._id,
           _creationTime: a._creationTime,
           title: a.title,
@@ -528,7 +525,22 @@ export const browseUnderShareGrant = query({
           thumbnailUrl: a.thumbnailUrl,
           uploaderName: a.uploaderName,
           lastModifiedAt: a.lastModifiedAt,
-        })),
+          commentCount: comments.length,
+        };
+      }),
+    );
+
+    return {
+      parentFolderId: resolvedParentFolderId ?? null,
+      crumb,
+      folders: folders.map((f) => ({
+        _id: f._id,
+        _creationTime: f._creationTime,
+        name: f.name,
+        sizeBytes: f.sizeBytes,
+        lastModifiedAt: f.lastModifiedAt,
+      })),
+      assets: assetsWithCounts,
     };
   },
 });

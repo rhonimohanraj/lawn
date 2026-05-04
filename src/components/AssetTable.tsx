@@ -59,7 +59,14 @@ interface AssetTableProps {
   className?: string;
 }
 
-type SortKey = "name" | "status" | "size" | "uploadedBy" | "uploaded" | "modified";
+type SortKey =
+  | "name"
+  | "status"
+  | "size"
+  | "uploadedBy"
+  | "uploaded"
+  | "modified"
+  | "comments";
 type SortDir = "asc" | "desc";
 
 interface SortState {
@@ -152,6 +159,9 @@ function rowModifiedAt(row: Row): number {
     ? row.folder.lastModifiedAt ?? row.folder._creationTime
     : row.asset.lastModifiedAt ?? row.asset._creationTime;
 }
+function rowComments(row: Row): number {
+  return row.kind === "folder" ? -1 : row.asset.commentCount ?? 0;
+}
 
 function compareRows(a: Row, b: Row, sort: SortState): number {
   const dir = sort.dir === "asc" ? 1 : -1;
@@ -168,6 +178,8 @@ function compareRows(a: Row, b: Row, sort: SortState): number {
       return (rowUploadedAt(a) - rowUploadedAt(b)) * dir;
     case "modified":
       return (rowModifiedAt(a) - rowModifiedAt(b)) * dir;
+    case "comments":
+      return (rowComments(a) - rowComments(b)) * dir;
   }
 }
 
@@ -288,6 +300,13 @@ export function AssetTable({
                 className="hidden md:table-cell"
               />
               <HeaderCell label="Modified" sortKey="modified" active={sort} onSort={handleSort} />
+              <HeaderCell
+                label="Comments"
+                sortKey="comments"
+                active={sort}
+                onSort={handleSort}
+                className="hidden md:table-cell"
+              />
               <th aria-label="Actions" className="w-10" />
             </tr>
           </thead>
@@ -358,6 +377,9 @@ function FolderRow({
         {folder.lastModifiedAt
           ? formatRelativeTime(folder.lastModifiedAt)
           : formatRelativeTime(folder._creationTime)}
+      </td>
+      <td className="px-3 py-2.5 font-mono text-xs text-[#888] hidden md:table-cell whitespace-nowrap">
+        —
       </td>
       <td className="px-2 py-2.5 text-right">
         <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
@@ -437,6 +459,9 @@ function AssetRow({
       </td>
       <td className="px-3 py-2.5 font-mono text-xs text-[#888] whitespace-nowrap">
         {formatRelativeTime(asset.lastModifiedAt ?? asset._creationTime)}
+      </td>
+      <td className="px-3 py-2.5 font-mono text-xs text-[#888] hidden md:table-cell whitespace-nowrap">
+        {asset.commentCount ?? 0}
       </td>
       <td className="px-2 py-2.5 text-right">
         <div

@@ -2,7 +2,7 @@
 import { useConvex, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,7 +20,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Folder, Plus, MoreVertical, Trash2, Users, ArrowRight, CreditCard } from "lucide-react";
+import {
+  Folder,
+  Plus,
+  MoreVertical,
+  Trash2,
+  Users,
+  ArrowRight,
+  CreditCard,
+  Link as LinkIcon,
+  FolderInput,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +58,11 @@ type TeamProjectCardProps = {
   canCreateProject: boolean;
   onOpen: () => void;
   onDelete: (projectId: Id<"projects">) => void;
+  onShare: (projectId: Id<"projects">) => void;
+  /** HTML5 drag/drop handlers wired by the parent so the same logic powers
+   *  both grid + table views. */
+  dragHandlers: React.HTMLAttributes<HTMLDivElement>;
+  isDragOver: boolean;
 };
 
 function TeamProjectCard({
@@ -56,6 +71,9 @@ function TeamProjectCard({
   canCreateProject,
   onOpen,
   onDelete,
+  onShare,
+  dragHandlers,
+  isDragOver,
 }: TeamProjectCardProps) {
   const convex = useConvex();
   const prewarmIntentHandlers = useRoutePrewarmIntent(() =>
@@ -67,8 +85,13 @@ function TeamProjectCard({
 
   return (
     <Card
-      className="group cursor-pointer hover:bg-[#e8e8e0] transition-colors"
+      className={cn(
+        "group cursor-pointer hover:bg-[#e8e8e0] transition-colors",
+        isDragOver && "ring-2 ring-[#2d5a2d] ring-offset-2 ring-offset-[#f0f0e8]",
+      )}
       onClick={onOpen}
+      draggable
+      {...dragHandlers}
       {...prewarmIntentHandlers}
     >
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
@@ -93,6 +116,15 @@ function TeamProjectCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShare(project._id);
+                }}
+              >
+                <LinkIcon className="mr-2 h-4 w-4" />
+                Share project
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-[#dc2626] focus:text-[#dc2626]"
                 onClick={(e) => {
@@ -126,12 +158,50 @@ export default function TeamPage() {
   const { context, team, projects, billing } = useTeamData({ teamSlug });
   const createProject = useMutation(api.projects.create);
   const deleteProject = useMutation(api.projects.remove);
+  const createProjectShare = useMutation(api.shareLinks.createForProject);
+  const nestProjectIntoProject = useMutation(api.projectActions.nestProjectIntoProject);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+
+  // Drag-to-nest state. dragSourceId = the project being dragged. dragOverId
+  // = the prospective drop target, used to highlight the row/card.
+  const [dragSourceId, setDragSourceId] = useState<Id<"projects"> | null>(null);
+  const [dragOverId, setDragOverId] = useState<Id<"projects"> | null>(null);
+
+  // Pending nest, awaiting confirmation. We collect both names so the
+  // dialog can describe the action in plain English.
+  const [pendingNest, setPendingNest] = useState<{
+    sourceId: Id<"projects">;
+    sourceName: string;
+    targetId: Id<"projects">;
+    targetName: string;
+  } | null>(null);
+  const [isNesting, setIsNesting] = useState(false);
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  const shareToastTimeoutRef = useRef<number | null>(null);
+
+  const showShareToast = useCallback((message: string) => {
+    setShareToast(message);
+    if (shareToastTimeoutRef.current !== null) {
+      window.clearTimeout(shareToastTimeoutRef.current);
+    }
+    shareToastTimeoutRef.current = window.setTimeout(() => {
+      setShareToast(null);
+      shareToastTimeoutRef.current = null;
+    }, 2400);
+  }, []);
+  useEffect(
+    () => () => {
+      if (shareToastTimeoutRef.current !== null) {
+        window.clearTimeout(shareToastTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const shouldCanonicalize =
     !!context && !context.isCanonical && pathname !== context.canonicalPath;
@@ -185,6 +255,91 @@ export default function TeamPage() {
       console.error("Failed to delete project:", error);
     }
   };
+
+  const handleShareProject = useCallback(
+    async (projectId: Id<"projects">) => {
+      try {
+        const result = await createProjectShare({
+          projectId,
+          allowDownload: false,
+        });
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const url = `${origin}/share/${result.token}`;
+        if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+          showShareToast("Project share link copied");
+        } else {
+          showShareToast(url);
+        }
+      } catch (error) {
+        console.error("Failed to create project share:", error);
+        showShareToast("Could not create share link");
+      }
+    },
+    [createProjectShare, showShareToast],
+  );
+
+  const handleConfirmNest = useCallback(async () => {
+    if (!pendingNest) return;
+    setIsNesting(true);
+    try {
+      await nestProjectIntoProject({
+        sourceProjectId: pendingNest.sourceId,
+        targetProjectId: pendingNest.targetId,
+      });
+      showShareToast(
+        `${pendingNest.sourceName} nested inside ${pendingNest.targetName}`,
+      );
+      setPendingNest(null);
+    } catch (error) {
+      console.error("Failed to nest project:", error);
+      showShareToast(
+        error instanceof Error ? error.message : "Failed to nest project",
+      );
+    } finally {
+      setIsNesting(false);
+    }
+  }, [nestProjectIntoProject, pendingNest, showShareToast]);
+
+  // Drag handler factory — same logic for grid + table. Each call returns
+  // the four HTML5 DnD handlers wired to a specific project.
+  const dragHandlersFor = useCallback(
+    (project: { _id: Id<"projects">; name: string }): React.HTMLAttributes<HTMLElement> => ({
+      onDragStart: (e: React.DragEvent) => {
+        setDragSourceId(project._id);
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", project._id);
+      },
+      onDragEnd: () => {
+        setDragSourceId(null);
+        setDragOverId(null);
+      },
+      onDragOver: (e: React.DragEvent) => {
+        if (!dragSourceId || dragSourceId === project._id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (dragOverId !== project._id) setDragOverId(project._id);
+      },
+      onDragLeave: () => {
+        if (dragOverId === project._id) setDragOverId(null);
+      },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        if (!dragSourceId || dragSourceId === project._id) return;
+        const sourceProject = projects?.find((p) => p._id === dragSourceId);
+        if (!sourceProject) return;
+        setPendingNest({
+          sourceId: dragSourceId,
+          sourceName: sourceProject.name,
+          targetId: project._id,
+          targetName: project.name,
+        });
+        setDragSourceId(null);
+        setDragOverId(null);
+      },
+    }),
+    [dragSourceId, dragOverId, projects],
+  );
 
   const canManageMembers = team?.role === "owner" || team?.role === "admin";
   const hasActiveSubscription = billing?.hasActiveSubscription ?? false;
@@ -303,6 +458,9 @@ export default function TeamPage() {
                   navigate({ to: projectPath(team.slug, project._id) })
                 }
                 onDelete={handleDeleteProject}
+                onShare={handleShareProject}
+                dragHandlers={dragHandlersFor(project)}
+                isDragOver={dragOverId === project._id}
               />
             ))}
           </div>
@@ -311,6 +469,10 @@ export default function TeamPage() {
             projects={projects ?? []}
             onOpen={(projectId) => navigate({ to: projectPath(team.slug, projectId) })}
             sortStorageKey={`frame:projectTableSort:${team?.slug ?? "default"}`}
+            rowDragHandlers={(project) => ({
+              dragOver: dragOverId === project._id,
+              ...dragHandlersFor(project),
+            })}
             renderActions={
               canCreateProject
                 ? (project) => (
@@ -321,6 +483,10 @@ export default function TeamPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => void handleShareProject(project._id)}>
+                          <LinkIcon className="mr-2 h-4 w-4" />
+                          Share project
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-[#dc2626] focus:text-[#dc2626]"
                           onClick={() => handleDeleteProject(project._id)}
@@ -384,6 +550,57 @@ export default function TeamPage() {
           onOpenChange={setMemberDialogOpen}
         />
       )}
+
+      {/* Drag-to-nest confirmation. The mutation is destructive (deletes the
+          source project after moving its contents), so we explicitly confirm. */}
+      <Dialog
+        open={pendingNest !== null}
+        onOpenChange={(open) => {
+          if (!open && !isNesting) setPendingNest(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Nest <span className="font-mono">{pendingNest?.sourceName}</span> inside{" "}
+              <span className="font-mono">{pendingNest?.targetName}</span>?
+            </DialogTitle>
+            <DialogDescription>
+              All assets and folders inside{" "}
+              <strong>{pendingNest?.sourceName}</strong> will be moved into a new
+              folder called <strong>{pendingNest?.sourceName}</strong> at the top
+              of <strong>{pendingNest?.targetName}</strong>. The original{" "}
+              <strong>{pendingNest?.sourceName}</strong> project will be deleted
+              once the move completes.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingNest(null)}
+              disabled={isNesting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleConfirmNest()}
+              disabled={isNesting}
+            >
+              <FolderInput className="mr-2 h-4 w-4" />
+              {isNesting ? "Nesting..." : "Nest project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {shareToast ? (
+        <div className="fixed right-4 top-4 z-50" aria-live="polite">
+          <div className="border-2 border-[#1a1a1a] bg-[#f0f0e8] px-3 py-2 text-sm font-bold shadow-[4px_4px_0px_0px_var(--shadow-color)]">
+            {shareToast}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

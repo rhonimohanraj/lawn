@@ -492,7 +492,7 @@ export default function SharePage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-6 space-y-6">
+      <main className="max-w-7xl mx-auto p-6 space-y-6">
         {downloadError ? (
           <div
             role="alert"
@@ -514,44 +514,51 @@ export default function SharePage() {
           </div>
         </div>
 
-        <div className="border-2 border-[#1a1a1a] overflow-hidden">
-          {video.assetKind && video.assetKind !== "video" ? (
-            <AssetViewer
-              assetKind={video.assetKind}
-              title={video.title}
-              contentType={video.contentType}
-              downloadUrl={sharedDownloadUrl ?? undefined}
-              disallowDownload
-            />
-          ) : playbackSession?.url ? (
-            <VideoPlayer
-              ref={playerRef}
-              src={playbackSession.url}
-              poster={playbackSession.posterUrl}
-              comments={flattenedComments}
-              onTimeUpdate={setCurrentTime}
-              allowDownload={false}
-            />
-          ) : (
-            <div className="relative aspect-video overflow-hidden rounded-xl border border-zinc-800/80 bg-black shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
-              {(playbackSession?.posterUrl || video.thumbnailUrl?.startsWith("http")) ? (
-                <img
-                  src={playbackSession?.posterUrl ?? video.thumbnailUrl}
-                  alt={`${video.title} thumbnail`}
-                  className="h-full w-full object-cover blur-[4px]"
+        {/* Two-column layout on lg+: video left, comments sidebar right.
+            Below lg, stacks vertically (comments after video). The sidebar
+            sticks while the video pane scrolls past — matches Frame.io. */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-6 min-w-0">
+            <div className="border-2 border-[#1a1a1a] overflow-hidden">
+              {video.assetKind && video.assetKind !== "video" ? (
+                <AssetViewer
+                  assetKind={video.assetKind}
+                  title={video.title}
+                  contentType={video.contentType}
+                  downloadUrl={sharedDownloadUrl ?? undefined}
+                  disallowDownload
                 />
-              ) : null}
-              <div className="absolute inset-0 bg-black/45" />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
-                <p className="text-sm font-medium text-white/85">
-                  {playbackError ?? (isLoadingPlayback ? "Loading stream..." : "Preparing stream...")}
-                </p>
-              </div>
+              ) : playbackSession?.url ? (
+                <VideoPlayer
+                  ref={playerRef}
+                  src={playbackSession.url}
+                  poster={playbackSession.posterUrl}
+                  comments={flattenedComments}
+                  onTimeUpdate={setCurrentTime}
+                  allowDownload={false}
+                />
+              ) : (
+                <div className="relative aspect-video overflow-hidden rounded-xl border border-zinc-800/80 bg-black shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
+                  {(playbackSession?.posterUrl || video.thumbnailUrl?.startsWith("http")) ? (
+                    <img
+                      src={playbackSession?.posterUrl ?? video.thumbnailUrl}
+                      alt={`${video.title} thumbnail`}
+                      className="h-full w-full object-cover blur-[4px]"
+                    />
+                  ) : null}
+                  <div className="absolute inset-0 bg-black/45" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
+                    <p className="text-sm font-medium text-white/85">
+                      {playbackError ?? (isLoadingPlayback ? "Loading stream..." : "Preparing stream...")}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
 
+          <aside className="lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
         <section className="border-2 border-[#1a1a1a] bg-[#e8e8e0] p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-black text-[#1a1a1a]">Comments</h2>
@@ -639,6 +646,8 @@ export default function SharePage() {
             </div>
           )}
         </section>
+          </aside>
+        </div>
       </main>
 
       <footer className="border-t-2 border-[#1a1a1a] px-6 py-4 mt-8">
