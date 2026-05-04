@@ -91,6 +91,79 @@ export const repairAssetS3Key = internalMutation({
   },
 });
 
+/** Frame.io alignment audit: for every asset row, return its s3Key
+ *  alongside the project + folder it currently lives in. Used by
+ *  scripts/check-alignment.ts to compare current Convex placement
+ *  against what the lawn-migrate state files say Frame.io structure
+ *  should be. */
+export const listAssetPlacements = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<
+    Array<{
+      _id: string;
+      s3Key: string | null;
+      title: string;
+      projectId: string;
+      projectName: string;
+      folderId: string | null;
+      folderPath: string;
+    }>
+  > => {
+    const all = await ctx.db.query("assets").collect();
+    const projectCache = new Map<string, string>();
+    const folderCache = new Map<string, string>();
+
+    async function projectName(id: Id<"projects">): Promise<string> {
+      const cached = projectCache.get(id);
+      if (cached) return cached;
+      const p = await ctx.db.get(id);
+      const name = p?.name ?? "<missing>";
+      projectCache.set(id, name);
+      return name;
+    }
+
+    async function folderPath(id: Id<"folders"> | undefined): Promise<string> {
+      if (!id) return "";
+      const cached = folderCache.get(id);
+      if (cached) return cached;
+      const f = await ctx.db.get(id);
+      if (!f) {
+        folderCache.set(id, "<missing>");
+        return "<missing>";
+      }
+      const parent = f.parentFolderId
+        ? await folderPath(f.parentFolderId)
+        : "";
+      const path = parent ? `${parent}/${f.name}` : f.name;
+      folderCache.set(id, path);
+      return path;
+    }
+
+    const out: Array<{
+      _id: string;
+      s3Key: string | null;
+      title: string;
+      projectId: string;
+      projectName: string;
+      folderId: string | null;
+      folderPath: string;
+    }> = [];
+
+    for (const a of all) {
+      out.push({
+        _id: a._id as string,
+        s3Key: a.s3Key ?? null,
+        title: a.title,
+        projectId: a.projectId as string,
+        projectName: await projectName(a.projectId),
+        folderId: (a.folderId as string | undefined) ?? null,
+        folderPath: await folderPath(a.folderId),
+      });
+    }
+    return out;
+  },
+});
+
 /** Set of every Convex `s3Key` currently in use. The recovery action
  *  uses this to skip B2 keys we've already given a row to (otherwise
  *  every batch would re-recover the same first N orphans and we'd
