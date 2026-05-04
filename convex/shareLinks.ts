@@ -16,6 +16,20 @@ import {
   resolveActiveShareGrant,
 } from "./shareAccess";
 import { folderIsInShareScope, shareLinkScope } from "./shareScope";
+import { findAssetByLegacyId } from "./legacyId";
+import type { QueryCtx } from "./_generated/server";
+
+/** Asset lookup that auto-falls-back to legacy s3Key matching, so share
+ *  links created against a now-dead assetId still resolve to the
+ *  current canonical row when the underlying B2 file is alive. */
+async function getAssetWithLegacyFallback(
+  ctx: QueryCtx | MutationCtx,
+  assetId: Id<"assets">,
+): Promise<Doc<"assets"> | null> {
+  const direct = await ctx.db.get(assetId);
+  if (direct) return direct;
+  return findAssetByLegacyId(ctx, assetId as unknown as string);
+}
 
 const shareLinkStatusValidator = v.union(
   v.literal("missing"),
@@ -341,7 +355,7 @@ export const getByToken = query({
 
     // Validate the scoped target still exists.
     if (scope.kind === "asset") {
-      const asset = await ctx.db.get(scope.assetId);
+      const asset = await getAssetWithLegacyFallback(ctx, scope.assetId);
       if (!asset || asset.status !== "ready") {
         return { status: "missing" as const };
       }
@@ -380,7 +394,7 @@ export const shareGrantContext = query({
     if (scope.kind === "invalid") return null;
 
     if (scope.kind === "asset") {
-      const asset = await ctx.db.get(scope.assetId);
+      const asset = await getAssetWithLegacyFallback(ctx, scope.assetId);
       if (!asset || asset.status !== "ready") return null;
       const project = await ctx.db.get(asset.projectId);
       return {
@@ -587,9 +601,15 @@ export const issueAccessGrant = mutation({
       return { ok: false, grantToken: null };
     }
     if (scope.kind === "asset") {
-      const asset = await ctx.db.get(scope.assetId);
+      const asset = await getAssetWithLegacyFallback(ctx, scope.assetId);
       if (!asset || asset.status !== "ready") {
         return { ok: false, grantToken: null };
+      }
+      // Auto-heal: if the share's assetId pointed at a dead row but the
+      // legacy lookup found the canonical asset, patch the row so future
+      // lookups skip the fallback scan.
+      if (asset._id !== scope.assetId) {
+        await ctx.db.patch(link._id, { assetId: asset._id });
       }
     } else if (scope.kind === "folder") {
       const folder = await ctx.db.get(scope.folderId);

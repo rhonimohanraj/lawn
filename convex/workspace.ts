@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { getUser } from "./auth";
 import { Doc } from "./_generated/dataModel";
+import { findAssetByLegacyId } from "./legacyId";
 
 function buildCanonicalPath(input: {
   teamSlug: string;
@@ -21,9 +22,12 @@ function buildCanonicalPath(input: {
 
 export const resolveContext = query({
   args: {
+    // Validators are loose (string instead of v.id) so that legacy URLs
+    // pointing at deleted rows still reach the handler — Convex's v.id()
+    // would 400 the request before legacyId fallback can run.
     teamSlug: v.optional(v.string()),
-    projectId: v.optional(v.id("projects")),
-    assetId: v.optional(v.id("assets")),
+    projectId: v.optional(v.string()),
+    assetId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getUser(ctx);
@@ -34,7 +38,15 @@ export const resolveContext = query({
     let asset: Doc<"assets"> | null = null;
 
     if (args.assetId) {
-      asset = await ctx.db.get(args.assetId);
+      // Try the live row first; if the id is dead (deleted row, post-rename
+      // mismatch, etc.) fall through to legacy s3Key lookup before giving up.
+      const normalizedAssetId = ctx.db.normalizeId("assets", args.assetId);
+      asset = normalizedAssetId
+        ? await ctx.db.get(normalizedAssetId)
+        : null;
+      if (!asset) {
+        asset = await findAssetByLegacyId(ctx, args.assetId);
+      }
       if (!asset) return null;
 
       project = await ctx.db.get(asset.projectId);
@@ -43,7 +55,10 @@ export const resolveContext = query({
       team = await ctx.db.get(project.teamId);
       if (!team) return null;
     } else if (args.projectId) {
-      project = await ctx.db.get(args.projectId);
+      const normalizedProjectId = ctx.db.normalizeId("projects", args.projectId);
+      project = normalizedProjectId
+        ? await ctx.db.get(normalizedProjectId)
+        : null;
       if (!project) return null;
 
       team = await ctx.db.get(project.teamId);

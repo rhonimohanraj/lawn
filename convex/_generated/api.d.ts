@@ -24,6 +24,7 @@ import type * as comments from "../comments.js";
 import type * as folders from "../folders.js";
 import type * as foldersBackfill from "../foldersBackfill.js";
 import type * as http from "../http.js";
+import type * as legacyId from "../legacyId.js";
 import type * as migration from "../migration.js";
 import type * as migrationActions from "../migrationActions.js";
 import type * as migrationStatus from "../migrationStatus.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   folders: typeof folders;
   foldersBackfill: typeof foldersBackfill;
   http: typeof http;
+  legacyId: typeof legacyId;
   migration: typeof migration;
   migrationActions: typeof migrationActions;
   migrationStatus: typeof migrationStatus;

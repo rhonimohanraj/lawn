@@ -46,7 +46,11 @@ export default function VideoPage() {
   const pathname = useLocation().pathname;
   const teamSlug = typeof params.teamSlug === "string" ? params.teamSlug : "";
   const projectId = params.projectId as Id<"projects">;
-  const assetId = params.assetId as Id<"assets">;
+  // Route filename is `$teamSlug.$projectId.$videoId.tsx`, so TanStack
+  // exposes the URL segment as `params.videoId`. We accept either name
+  // for backwards-compat with any deep-linked code that still says
+  // `params.assetId`.
+  const assetId = (params.videoId ?? params.assetId) as Id<"assets">;
   const convex = useConvex();
 
   const {
